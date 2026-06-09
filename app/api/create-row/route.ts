@@ -4,7 +4,7 @@
  * Inserts a demo row into the first EGDesk table.
  *
  * EGDesk key concepts shown here:
- *  - `insertRow` from egdesk-helpers.ts — inserts a single row into a table
+ *  - `insertRows` from egdesk-helpers.ts — inserts rows into a table
  *
  * The row data must match the column names in your table.
  * Column names are available in TABLES[key].columns (from egdesk.config.ts).
@@ -15,7 +15,7 @@ import { NextResponse } from 'next/server';
 // @ts-ignore — file is generated at setup time
 import { TABLES } from '../../../egdesk.config';
 // @ts-ignore — file is generated at setup time
-import { insertRow } from '../../../egdesk-helpers';
+import { insertRows } from '../../../egdesk-helpers';
 
 export async function POST() {
   try {
@@ -37,8 +37,8 @@ export async function POST() {
       demoRow[col] = `demo_${col}_${Date.now()}`;
     }
 
-    // insertRow(tableName, rowData) — inserts the row and returns the new row
-    const result = await insertRow(firstTable.name, demoRow);
+    // insertRows(tableName, rows) — inserts rows and returns the result
+    const result = await insertRows(firstTable.name, [demoRow]);
 
     return NextResponse.json({ success: true, row: result });
   } catch (error: any) {
