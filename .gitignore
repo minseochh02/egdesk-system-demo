@@ -16,7 +16,6 @@
 .env.production.local
 
 # egdesk generated files — regenerated automatically on each machine
-egdesk.config.ts
 egdesk-helpers.ts
 proxy.ts
 middleware.ts
