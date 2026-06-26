@@ -1,445 +1,658 @@
-import type React from 'react';
+'use client';
 
-type ToolDoc = {
+import type React from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { apiFetch, getEgdeskBasePath } from '@/lib/api';
+
+// ── Tool definitions ────────────────────────────────────────────────────────
+
+type FieldDef = {
   name: string;
-  title: string;
-  purpose: string;
-  helper: string;
-  raw: string;
-  args: Array<{ name: string; detail: string }>;
-  notes: string[];
+  label: string;
+  type: 'string' | 'boolean' | 'select' | 'number';
+  options?: string[];
+  required?: boolean;
+  placeholder?: string;
+  defaultValue?: string | boolean | number;
 };
 
-const tools: ToolDoc[] = [
+type ToolDef = {
+  name: string;
+  title: string;
+  description: string;
+  fields: FieldDef[];
+  category: 'login' | 'channels' | 'bots' | 'diagnostics';
+};
+
+const TOOLS: ToolDef[] = [
   {
     name: 'kakao_begin_login',
-    title: 'Begin Kakao Login',
-    purpose: 'Start Kakao QR login in a persistent browser profile. Returns a loginId and QR image for the user to scan. Must be called before any other Kakao tool if the session is not already authenticated.',
-    helper: `const login = await beginKakaoLogin('Default', {
-  service: 'chatbot',
-  waitMs: 30000,
-});
-// login.qrImageDataUrl contains the QR code to display
-// login.loginId is used for polling and closing`,
-    raw: `await callKakaoTool('kakao_begin_login', {
-  profileName: 'Default',
-  service: 'chatbot',
-  waitMs: 30000,
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
-      { name: 'service', detail: 'Optional. "business" or "chatbot". Defaults to "chatbot".' },
-      { name: 'headless', detail: 'Optional. Run browser headless. Defaults to true.' },
-      { name: 'waitMs', detail: 'Optional. Milliseconds to wait for login before returning. Defaults to 0 (return immediately with QR).' },
-    ],
-    notes: [
-      'Returns a QR image data URL that the user must scan with KakaoTalk on their phone.',
-      'If already logged in, returns immediately with status "logged_in".',
-      'Poll with kakaoLoginStatus() until status changes from "waiting_for_qr" to "logged_in".',
-      'Login sessions expire after 5 minutes.',
+    title: 'Begin Login',
+    description: 'Start Kakao QR login. Returns a QR code to scan with KakaoTalk.',
+    category: 'login',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
+      { name: 'service', label: 'Service', type: 'select', options: ['chatbot', 'business'], defaultValue: 'chatbot' },
+      { name: 'headless', label: 'Headless', type: 'boolean', defaultValue: true },
+      { name: 'waitMs', label: 'Wait (ms)', type: 'number', placeholder: '0', defaultValue: 0 },
     ],
   },
   {
     name: 'kakao_login_status',
     title: 'Login Status',
-    purpose: 'Poll the status of a Kakao QR login session. Use after beginKakaoLogin to check if the user has scanned the QR code.',
-    helper: `const status = await kakaoLoginStatus('Default', login.loginId);
-if (status.status === 'logged_in') {
-  // proceed with channel/bot operations
-}`,
-    raw: `await callKakaoTool('kakao_login_status', {
-  profileName: 'Default',
-  loginId: login.loginId,
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name (must match the begin_login call).' },
-      { name: 'loginId', detail: 'Login session ID returned by kakao_begin_login.' },
-    ],
-    notes: [
-      'Status values: "starting", "waiting_for_qr", "logged_in", "expired", "failed", "closed".',
-      'The qrImageDataUrl may refresh between polls — always display the latest one.',
+    description: 'Poll login session status by loginId.',
+    category: 'login',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
+      { name: 'loginId', label: 'Login ID', type: 'string', required: true, placeholder: 'From begin_login result' },
     ],
   },
   {
     name: 'kakao_close_login',
     title: 'Close Login',
-    purpose: 'Close a pending Kakao login browser session and free resources.',
-    helper: `await closeKakaoLogin('Default', login.loginId);`,
-    raw: `await callKakaoTool('kakao_close_login', {
-  profileName: 'Default',
-  loginId: login.loginId,
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name (must match the begin_login call).' },
-      { name: 'loginId', detail: 'Login session ID returned by kakao_begin_login.' },
-    ],
-    notes: [
-      'Always close login sessions when done to free the browser process.',
-      'Closing an already-closed or expired session returns an error but is safe to call.',
+    description: 'Close a pending login session and free browser resources.',
+    category: 'login',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
+      { name: 'loginId', label: 'Login ID', type: 'string', required: true, placeholder: 'From begin_login result' },
     ],
   },
   {
     name: 'kakao_list_channels',
-    title: 'List Kakao Channels',
-    purpose: 'Find managed Kakao Channels for a Google profile. Use this before selecting a channel or creating a bot.',
-    helper: `const channels = await listKakaoChannels('Default', {
-  enrichDetails: true,
-});`,
-    raw: `await callKakaoTool('kakao_list_channels', {
-  profileName: 'Default',
-  enrichDetails: true,
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
-      { name: 'enrichDetails', detail: 'Optional. When true, EGDesk opens channel detail pages to collect richer data.' },
-    ],
-    notes: [
-      'Returns channels with names, search IDs, profile URLs, and any extra details EGDesk can read.',
-      'Use searchId from this result when creating a Kakao bot for a specific channel.',
+    title: 'List Channels',
+    description: 'List Kakao Business channels for a profile.',
+    category: 'channels',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
+      { name: 'enrichDetails', label: 'Enrich Details', type: 'boolean', defaultValue: true },
     ],
   },
   {
     name: 'kakao_select_channel',
-    title: 'Select Kakao Channel',
-    purpose: 'Open or activate a known Kakao Channel in the managed browser profile.',
-    helper: `await selectKakaoChannel('Default', {
-  searchId: '@sample-channel',
-  name: 'Sample Channel',
-});`,
-    raw: `await callKakaoTool('kakao_select_channel', {
-  profileName: 'Default',
-  channel: {
-    searchId: '@sample-channel',
-    name: 'Sample Channel',
-  },
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
-      { name: 'channel', detail: 'A channel object. Prefer passing searchId; name is useful as a fallback label.' },
-    ],
-    notes: [
-      'Call listKakaoChannels first if you do not know the channel searchId.',
-      'This is useful before doing manual review or confirming the correct Kakao workspace.',
+    title: 'Select Channel',
+    description: 'Persist a selected channel into EGDesk profile metadata.',
+    category: 'channels',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
+      { name: 'channel.searchId', label: 'Search ID', type: 'string', required: true, placeholder: '@my-channel' },
+      { name: 'channel.name', label: 'Channel Name', type: 'string', placeholder: 'My Channel' },
     ],
   },
   {
     name: 'kakao_create_channel',
-    title: 'Create Kakao Channel',
-    purpose: 'Create a new Kakao Channel, or reuse an existing channel when requested.',
-    helper: `const channel = await createKakaoChannel({
-  profileName: 'Default',
-  channelName: 'Demo Support',
-  searchId: '@demo-support',
-  reuseExisting: true,
-});`,
-    raw: `await callKakaoTool('kakao_create_channel', {
-  profileName: 'Default',
-  channelName: 'Demo Support',
-  searchId: '@demo-support',
-  reuseExisting: true,
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
-      { name: 'channelName', detail: 'Visible Kakao Channel name to create.' },
-      { name: 'searchId', detail: 'Kakao Channel search ID, usually beginning with @.' },
-      { name: 'reuseExisting', detail: 'Optional. When true, EGDesk returns a matching existing channel instead of failing.' },
-    ],
-    notes: [
-      'Kakao may require account verification, business settings, or manual confirmation depending on the account state.',
-      'Keep search IDs stable because bots and callback checks use them later.',
+    title: 'Create Channel',
+    description: 'Create or reuse a Kakao Business channel.',
+    category: 'channels',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
+      { name: 'channelName', label: 'Channel Name', type: 'string', required: true, placeholder: 'Demo Support' },
+      { name: 'searchId', label: 'Search ID', type: 'string', required: true, placeholder: 'demo-support' },
+      { name: 'reuseExisting', label: 'Reuse Existing', type: 'boolean', defaultValue: true },
     ],
   },
   {
     name: 'kakao_list_bots',
-    title: 'List Kakao Bots',
-    purpose: 'Read Kakao bot entries available in the selected Kakao account.',
-    helper: `const bots = await listKakaoBots('Default');`,
-    raw: `await callKakaoTool('kakao_list_bots', {
-  profileName: 'Default',
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
-    ],
-    notes: [
-      'Returns bot names, IDs, linked channel data, and callback metadata when available.',
-      'Use this before callback status checks if you want to target specific bots.',
+    title: 'List Bots',
+    description: 'List Kakao chatbot admin bots for a profile.',
+    category: 'bots',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
     ],
   },
   {
     name: 'kakao_create_bot',
-    title: 'Create Kakao Bot',
-    purpose: 'Create a Kakao bot and link it to a Kakao Channel.',
-    helper: `const bot = await createKakaoBot({
-  profileName: 'Default',
-  botName: 'Demo Support Bot',
-  channelSearchId: '@demo-support',
-  skillUrl: 'https://your-egdesk-url.example/kakao/skill',
-  reuseExisting: true,
-});`,
-    raw: `await callKakaoTool('kakao_create_bot', {
-  profileName: 'Default',
-  botName: 'Demo Support Bot',
-  channelSearchId: '@demo-support',
-  skillUrl: 'https://your-egdesk-url.example/kakao/skill',
-  reuseExisting: true,
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
-      { name: 'botName', detail: 'Visible Kakao bot name to create.' },
-      { name: 'channelSearchId', detail: 'Search ID of the Kakao Channel to link.' },
-      { name: 'skillUrl', detail: 'Optional. EGDesk Kakao skill webhook URL to configure during setup.' },
-      { name: 'reuseExisting', detail: 'Optional. When true, EGDesk returns a matching existing bot instead of failing.' },
-    ],
-    notes: [
-      'Create or list channels first so channelSearchId is accurate.',
-      'Use the EGDesk /kakao/skill endpoint as the callback URL for webhook delivery.',
+    title: 'Create Bot',
+    description: 'Create or reuse a Kakao chatbot, bind channel, configure skill, and deploy.',
+    category: 'bots',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
+      { name: 'botName', label: 'Bot Name', type: 'string', required: true, placeholder: 'Demo Support Bot' },
+      { name: 'channelSearchId', label: 'Channel Search ID', type: 'string', required: true, placeholder: '@demo-support' },
+      { name: 'skillUrl', label: 'Skill URL', type: 'string', placeholder: 'https://your-url/kakao/skill' },
+      { name: 'reuseExisting', label: 'Reuse Existing', type: 'boolean', defaultValue: true },
     ],
   },
   {
     name: 'kakao_list_resources',
-    title: 'List Kakao Resources',
-    purpose: 'Fetch channels and bots in one call for setup dashboards or audits.',
-    helper: `const resources = await listKakaoResources('Default', {
-  enrichDetails: true,
-});`,
-    raw: `await callKakaoTool('kakao_list_resources', {
-  profileName: 'Default',
-  enrichDetails: true,
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
-      { name: 'enrichDetails', detail: 'Optional. Applies richer channel detail collection where supported.' },
-    ],
-    notes: [
-      'Returns both channels and bots in a single response.',
-      'Use this for a first screen that needs to show current Kakao setup state.',
+    title: 'List Resources',
+    description: 'List both channels and bots in one call.',
+    category: 'diagnostics',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
+      { name: 'enrichDetails', label: 'Enrich Details', type: 'boolean', defaultValue: true },
     ],
   },
   {
     name: 'kakao_check_callback_statuses',
-    title: 'Check Callback Statuses',
-    purpose: 'Verify whether Kakao bots have their callback or skill webhook configured correctly.',
-    helper: `const statuses = await checkKakaoCallbackStatuses('Default', {
-  bots: [{ name: 'Demo Support Bot' }],
-  channels: [{ searchId: '@demo-support' }],
-});`,
-    raw: `await callKakaoTool('kakao_check_callback_statuses', {
-  profileName: 'Default',
-  bots: [{ name: 'Demo Support Bot' }],
-  channels: [{ searchId: '@demo-support' }],
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
-      { name: 'bots', detail: 'Optional. Bot objects to check. Omit to let EGDesk discover bots.' },
-      { name: 'channels', detail: 'Optional. Channel objects to help match bots to channels.' },
-    ],
-    notes: [
-      'Use after bot creation or after changing the EGDesk webhook URL.',
-      'The result is intended for setup health checks and repair prompts.',
+    title: 'Check Callbacks',
+    description: 'Verify bot skill/callback webhook configuration.',
+    category: 'diagnostics',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
     ],
   },
   {
     name: 'kakao_repair_callback_setup',
-    title: 'Repair Callback Setup',
-    purpose: 'Attempt to repair missing or stale Kakao callback configuration for managed bots.',
-    helper: `const repair = await repairKakaoCallbackSetup('Default', {
-  bots: [{ name: 'Demo Support Bot' }],
-  channels: [{ searchId: '@demo-support' }],
-});`,
-    raw: `await callKakaoTool('kakao_repair_callback_setup', {
-  profileName: 'Default',
-  bots: [{ name: 'Demo Support Bot' }],
-  channels: [{ searchId: '@demo-support' }],
-});`,
-    args: [
-      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
-      { name: 'bots', detail: 'Optional. Bot objects to repair. Omit to let EGDesk discover bots.' },
-      { name: 'channels', detail: 'Optional. Channel objects used for bot-channel matching.' },
-    ],
-    notes: [
-      'Run checkKakaoCallbackStatuses first when you want to show users exactly what will be repaired.',
-      'Some Kakao account states can still require manual browser confirmation.',
+    title: 'Repair Callbacks',
+    description: 'Repair missing or stale callback configuration and deploy.',
+    category: 'diagnostics',
+    fields: [
+      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
     ],
   },
 ];
 
-const setupSnippet = `import {
-  callKakaoTool,
-  beginKakaoLogin,
-  kakaoLoginStatus,
-  closeKakaoLogin,
-  listKakaoChannels,
-  listKakaoBots,
-  listKakaoResources,
-  selectKakaoChannel,
-  createKakaoChannel,
-  createKakaoBot,
-  checkKakaoCallbackStatuses,
-  repairKakaoCallbackSetup,
-} from '../egdesk-helpers';`;
+const CATEGORIES = [
+  { key: 'login', label: 'Login' },
+  { key: 'channels', label: 'Channels' },
+  { key: 'bots', label: 'Bots' },
+  { key: 'diagnostics', label: 'Diagnostics' },
+] as const;
 
-const flowSnippet = `const profileName = 'Default';
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
-// Step 0: Ensure Kakao login
-const login = await beginKakaoLogin(profileName, {
-  service: 'chatbot',
-  waitMs: 30000,
-});
+function buildArgs(tool: ToolDef, values: Record<string, string>): Record<string, any> {
+  const args: Record<string, any> = {};
+  for (const field of tool.fields) {
+    const raw = values[field.name];
+    if (raw === undefined || raw === '') continue;
 
-if (login.status === 'waiting_for_qr') {
-  // Display login.qrImageDataUrl to user and poll
-  let status = login;
-  while (status.status === 'waiting_for_qr') {
-    await new Promise(r => setTimeout(r, 2000));
-    status = await kakaoLoginStatus(profileName, login.loginId);
+    // Handle nested fields like channel.searchId
+    if (field.name.includes('.')) {
+      const [parent, child] = field.name.split('.');
+      if (!args[parent]) args[parent] = {};
+      args[parent][child] = raw;
+      continue;
+    }
+
+    if (field.type === 'boolean') {
+      args[field.name] = raw === 'true';
+    } else if (field.type === 'number') {
+      args[field.name] = Number(raw);
+    } else {
+      args[field.name] = raw;
+    }
   }
+  return args;
 }
 
-// Step 1: Create or reuse channel
-const channel = await createKakaoChannel({
-  profileName,
-  channelName: 'Demo Support',
-  searchId: '@demo-support',
-  reuseExisting: true,
-});
+type HistoryEntry = {
+  id: number;
+  tool: string;
+  args: Record<string, any>;
+  result: any;
+  error?: string;
+  timestamp: number;
+  durationMs: number;
+};
 
-const bot = await createKakaoBot({
-  profileName,
-  botName: 'Demo Support Bot',
-  channelSearchId: channel.searchId,
-  skillUrl: 'https://your-egdesk-url.example/kakao/skill',
-  reuseExisting: true,
-});
+// ── Page ────────────────────────────────────────────────────────────────────
 
-const status = await checkKakaoCallbackStatuses(profileName, {
-  bots: [bot],
-  channels: [channel],
-});`;
+export default function KakaoPlayground() {
+  const [selectedTool, setSelectedTool] = useState<ToolDef>(TOOLS[0]);
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
+  const [landingHref, setLandingHref] = useState('/');
+  const [dbHref, setDbHref] = useState('/database');
+  const nextId = useRef(1);
 
-export default function KakaoMcpPage() {
+  // Login polling state
+  const [loginPolling, setLoginPolling] = useState(false);
+  const [loginId, setLoginId] = useState<string | null>(null);
+  const [qrImage, setQrImage] = useState<string | null>(null);
+  const [loginStatus, setLoginStatus] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const bp = getEgdeskBasePath();
+    setLandingHref(bp || '/');
+    setDbHref(`${bp}/database`);
+  }, []);
+
+  // Initialize default field values when tool changes
+  useEffect(() => {
+    const defaults: Record<string, string> = {};
+    for (const field of selectedTool.fields) {
+      if (field.defaultValue !== undefined) {
+        defaults[field.name] = String(field.defaultValue);
+      }
+    }
+    setFieldValues(defaults);
+  }, [selectedTool]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setLoginPolling(false);
+  }, []);
+
+  const callTool = async (toolName: string, args: Record<string, any>): Promise<any> => {
+    const res = await apiFetch('/api/kakao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool: toolName, arguments: args }),
+    });
+    return res.json();
+  };
+
+  const startPolling = useCallback((id: string, profileName: string) => {
+    setLoginPolling(true);
+    setLoginId(id);
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const result = await callTool('kakao_login_status', { profileName, loginId: id });
+        const parsed = parseMcpResult(result);
+        if (parsed.qrImageDataUrl) setQrImage(parsed.qrImageDataUrl);
+        setLoginStatus(parsed.status || null);
+
+        if (parsed.status === 'logged_in' || parsed.status === 'expired' || parsed.status === 'failed' || parsed.status === 'closed') {
+          stopPolling();
+          // Add a status poll entry to history
+          setHistory(prev => [{
+            id: nextId.current++,
+            tool: 'kakao_login_status',
+            args: { profileName, loginId: id },
+            result: parsed,
+            timestamp: Date.now(),
+            durationMs: 0,
+          }, ...prev]);
+        }
+      } catch {
+        stopPolling();
+      }
+    }, 2500);
+  }, [stopPolling]);
+
+  const handleRun = async () => {
+    const args = buildArgs(selectedTool, fieldValues);
+    setRunning(true);
+
+    const start = Date.now();
+    try {
+      const raw = await callTool(selectedTool.name, args);
+      const parsed = parseMcpResult(raw);
+      const entry: HistoryEntry = {
+        id: nextId.current++,
+        tool: selectedTool.name,
+        args,
+        result: parsed,
+        timestamp: Date.now(),
+        durationMs: Date.now() - start,
+      };
+      setHistory(prev => [entry, ...prev]);
+      setExpandedEntry(entry.id);
+
+      // Auto-handle login flow
+      if (selectedTool.name === 'kakao_begin_login' && parsed.loginId) {
+        setLoginId(parsed.loginId);
+        if (parsed.qrImageDataUrl) setQrImage(parsed.qrImageDataUrl);
+        setLoginStatus(parsed.status || null);
+
+        if (parsed.status === 'waiting_for_qr') {
+          startPolling(parsed.loginId, args.profileName || 'Default');
+        }
+
+        // Auto-fill loginId on login_status and close_login tools
+        // (user can switch to those tools and the loginId will be pre-filled)
+      }
+    } catch (err: any) {
+      const entry: HistoryEntry = {
+        id: nextId.current++,
+        tool: selectedTool.name,
+        args,
+        result: null,
+        error: err.message || String(err),
+        timestamp: Date.now(),
+        durationMs: Date.now() - start,
+      };
+      setHistory(prev => [entry, ...prev]);
+      setExpandedEntry(entry.id);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const handleCloseLogin = async () => {
+    if (!loginId) return;
+    stopPolling();
+    try {
+      await callTool('kakao_close_login', {
+        profileName: fieldValues.profileName || 'Default',
+        loginId,
+      });
+    } catch { /* best effort */ }
+    setQrImage(null);
+    setLoginId(null);
+    setLoginStatus(null);
+  };
+
+  const setField = (name: string, value: string) => {
+    setFieldValues(prev => ({ ...prev, [name]: value }));
+  };
+
+  const selectToolByName = (name: string) => {
+    const tool = TOOLS.find(t => t.name === name);
+    if (tool) setSelectedTool(tool);
+  };
+
   return (
     <main style={pageStyle}>
-      <header style={headerStyle}>
-        <a href="../" style={backLinkStyle}>Back to database demo</a>
+      {/* Header */}
+      <header style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
+          <a href={landingHref} style={navLinkStyle}>Back to landing</a>
+          <a href={dbHref} style={navLinkStyle}>Database demo</a>
+        </div>
         <div style={eyebrowStyle}>EGDesk Kakao MCP</div>
-        <h1 style={titleStyle}>Kakao Channel setup and management</h1>
-        <p style={introStyle}>
-          Use these helpers after EGDesk regenerates <code>egdesk-helpers.ts</code>. They call the local
-          Kakao MCP endpoint through <code>/__kakao_proxy</code> in the browser or <code>/kakao/tools/call</code>
-          on the server.
+        <h1 style={titleStyle}>Kakao Playground</h1>
+        <p style={subtitleStyle}>
+          Call Kakao MCP tools, see QR codes, inspect results. EGDesk must be running with the Kakao MCP server enabled.
         </p>
       </header>
 
-      <section style={panelStyle}>
-        <h2 style={sectionTitleStyle}>Before using the tools</h2>
-        <div style={checkGridStyle}>
-          <div style={checkItemStyle}>
-            <strong>Kakao MCP server</strong>
-            <span>Enable the Kakao MCP server in EGDesk. It is opt-in because it drives browser automation.</span>
+      <div style={layoutStyle}>
+        {/* Left: Tool picker + form */}
+        <div style={leftColStyle}>
+          {/* Tool tabs by category */}
+          <div style={panelStyle}>
+            {CATEGORIES.map(cat => (
+              <div key={cat.key} style={{ marginBottom: 16 }}>
+                <div style={categoryLabelStyle}>{cat.label}</div>
+                <div style={toolTabGridStyle}>
+                  {TOOLS.filter(t => t.category === cat.key).map(tool => (
+                    <button
+                      key={tool.name}
+                      onClick={() => setSelectedTool(tool)}
+                      style={{
+                        ...toolTabStyle,
+                        ...(selectedTool.name === tool.name ? toolTabActiveStyle : {}),
+                      }}
+                    >
+                      {tool.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-          <div style={checkItemStyle}>
-            <strong>Google profile</strong>
-            <span>Use the same profile name that is logged into the target Kakao account.</span>
+
+          {/* Selected tool form */}
+          <div style={panelStyle}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: 0 }}>
+                {selectedTool.title}
+              </h2>
+              <code style={toolBadgeStyle}>{selectedTool.name}</code>
+            </div>
+            <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 16 }}>{selectedTool.description}</p>
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              {selectedTool.fields.map(field => (
+                <div key={field.name}>
+                  <label style={labelStyle}>
+                    {field.label}
+                    {field.required && <span style={{ color: '#dc2626' }}> *</span>}
+                  </label>
+                  {field.type === 'boolean' ? (
+                    <select
+                      value={fieldValues[field.name] ?? String(field.defaultValue ?? 'true')}
+                      onChange={e => setField(field.name, e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  ) : field.type === 'select' ? (
+                    <select
+                      value={fieldValues[field.name] ?? (field.defaultValue as string) ?? ''}
+                      onChange={e => setField(field.name, e.target.value)}
+                      style={inputStyle}
+                    >
+                      {field.options?.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={field.type === 'number' ? 'number' : 'text'}
+                      value={fieldValues[field.name] ?? ''}
+                      onChange={e => setField(field.name, e.target.value)}
+                      placeholder={field.placeholder}
+                      style={inputStyle}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button
+                onClick={handleRun}
+                disabled={running}
+                style={runBtnStyle}
+              >
+                {running ? 'Running...' : 'Run'}
+              </button>
+              {loginId && selectedTool.name.startsWith('kakao_') && (
+                <button onClick={() => {
+                  // Auto-fill loginId for status/close tools
+                  if (selectedTool.name === 'kakao_login_status' || selectedTool.name === 'kakao_close_login') {
+                    setField('loginId', loginId);
+                  } else {
+                    selectToolByName('kakao_login_status');
+                    setTimeout(() => setField('loginId', loginId!), 0);
+                  }
+                }} style={secondaryBtnStyle}>
+                  Fill loginId
+                </button>
+              )}
+            </div>
           </div>
-          <div style={checkItemStyle}>
-            <strong>Generated helpers</strong>
-            <span>Regenerate helpers so this app has the Kakao functions and proxy route.</span>
-          </div>
-        </div>
-      </section>
 
-      <section style={panelStyle}>
-        <h2 style={sectionTitleStyle}>Import helpers</h2>
-        <CodeBlock code={setupSnippet} />
-      </section>
+          {/* QR code panel (login flow) */}
+          {(qrImage || loginPolling) && (
+            <div style={qrPanelStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: '#111827' }}>
+                  Kakao QR Login
+                </h3>
+                <button onClick={handleCloseLogin} style={closeBtnStyle}>
+                  Close session
+                </button>
+              </div>
 
-      <section style={panelStyle}>
-        <h2 style={sectionTitleStyle}>Common setup flow</h2>
-        <p style={bodyTextStyle}>
-          This creates or reuses a channel, creates or reuses a bot, then verifies callback setup.
-        </p>
-        <CodeBlock code={flowSnippet} />
-      </section>
+              {qrImage ? (
+                <div style={{ textAlign: 'center' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={qrImage}
+                    alt="Kakao QR code"
+                    style={{ width: 200, height: 200, borderRadius: 8, border: '1px solid #e5e7eb' }}
+                  />
+                  <p style={{ color: '#6b7280', fontSize: 13, marginTop: 10 }}>
+                    Scan with KakaoTalk to log in
+                  </p>
+                </div>
+              ) : (
+                <p style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center' }}>
+                  Waiting for QR code...
+                </p>
+              )}
 
-      <section style={toolListStyle}>
-        <div style={sectionHeaderStyle}>
-          <h2 style={sectionTitleStyle}>Every Kakao MCP tool</h2>
-          <p style={bodyTextStyle}>
-            Each generated helper is a thin wrapper around <code>callKakaoTool()</code>. Use the helper for app
-            code and the raw call when you are building generic MCP tooling.
-          </p>
-        </div>
-
-        {tools.map((tool) => (
-          <article key={tool.name} style={toolCardStyle}>
-            <div style={toolHeaderStyle}>
-              <div>
-                <h3 style={toolTitleStyle}>{tool.title}</h3>
-                <code style={toolNameStyle}>{tool.name}</code>
+              <div style={statusBadgeContainerStyle}>
+                <span style={{
+                  ...statusBadgeStyle,
+                  background: loginStatus === 'logged_in' ? '#dcfce7' : loginStatus === 'failed' || loginStatus === 'expired' ? '#fef2f2' : '#fef3c7',
+                  color: loginStatus === 'logged_in' ? '#166534' : loginStatus === 'failed' || loginStatus === 'expired' ? '#991b1b' : '#92400e',
+                }}>
+                  {loginStatus || 'starting'}
+                </span>
+                {loginPolling && <span style={{ color: '#9ca3af', fontSize: 12 }}>polling every 2.5s</span>}
+                {loginId && <code style={{ fontSize: 11, color: '#6b7280' }}>{loginId}</code>}
               </div>
             </div>
-            <p style={purposeStyle}>{tool.purpose}</p>
+          )}
+        </div>
 
-            <div style={twoColumnStyle}>
-              <div>
-                <h4 style={miniTitleStyle}>Generated helper</h4>
-                <CodeBlock code={tool.helper} />
-              </div>
-              <div>
-                <h4 style={miniTitleStyle}>Raw MCP call</h4>
-                <CodeBlock code={tool.raw} />
-              </div>
+        {/* Right: Results history */}
+        <div style={rightColStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Results</h2>
+            {history.length > 0 && (
+              <button
+                onClick={() => setHistory([])}
+                style={{ ...secondaryBtnStyle, fontSize: 12, padding: '4px 10px' }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {history.length === 0 ? (
+            <div style={emptyResultStyle}>
+              Run a tool to see results here
             </div>
-
-            <div style={argsGridStyle}>
-              <div>
-                <h4 style={miniTitleStyle}>Inputs</h4>
-                <dl style={definitionListStyle}>
-                  {tool.args.map((arg) => (
-                    <div key={arg.name} style={definitionRowStyle}>
-                      <dt style={definitionTermStyle}>{arg.name}</dt>
-                      <dd style={definitionDescStyle}>{arg.detail}</dd>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {history.map(entry => (
+                <div key={entry.id} style={resultCardStyle}>
+                  <button
+                    onClick={() => setExpandedEntry(expandedEntry === entry.id ? null : entry.id)}
+                    style={resultHeaderBtnStyle}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                      <span style={{
+                        ...resultDotStyle,
+                        background: entry.error ? '#ef4444' : '#22c55e',
+                      }} />
+                      <code style={{ fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {entry.tool}
+                      </code>
                     </div>
-                  ))}
-                </dl>
-              </div>
-              <div>
-                <h4 style={miniTitleStyle}>Notes</h4>
-                <ul style={noteListStyle}>
-                  {tool.notes.map((note) => (
-                    <li key={note}>{note}</li>
-                  ))}
-                </ul>
-              </div>
+                    <span style={{ fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                      {entry.durationMs}ms
+                    </span>
+                  </button>
+
+                  {expandedEntry === entry.id && (
+                    <div style={{ padding: '0 12px 12px' }}>
+                      {/* Args */}
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={miniLabelStyle}>Arguments</div>
+                        <pre style={resultCodeStyle}>
+                          {JSON.stringify(entry.args, null, 2)}
+                        </pre>
+                      </div>
+
+                      {/* Result or error */}
+                      <div>
+                        <div style={miniLabelStyle}>{entry.error ? 'Error' : 'Response'}</div>
+                        <pre style={{
+                          ...resultCodeStyle,
+                          ...(entry.error ? { background: '#fef2f2', color: '#991b1b', borderColor: '#fecaca' } : {}),
+                        }}>
+                          {entry.error
+                            ? entry.error
+                            : JSON.stringify(entry.result, stripQrImages, 2)}
+                        </pre>
+                      </div>
+
+                      {/* Inline QR if present */}
+                      {entry.result?.qrImageDataUrl && (
+                        <div style={{ marginTop: 8, textAlign: 'center' }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={entry.result.qrImageDataUrl}
+                            alt="QR"
+                            style={{ width: 140, height: 140, borderRadius: 6, border: '1px solid #e5e7eb' }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Quick actions from result */}
+                      {entry.result?.loginId && entry.tool === 'kakao_begin_login' && (
+                        <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                          <button
+                            onClick={() => {
+                              selectToolByName('kakao_login_status');
+                              setTimeout(() => {
+                                setField('loginId', entry.result.loginId);
+                                setField('profileName', entry.args.profileName || 'Default');
+                              }, 0);
+                            }}
+                            style={secondaryBtnStyle}
+                          >
+                            Poll status
+                          </button>
+                          <button
+                            onClick={() => {
+                              selectToolByName('kakao_close_login');
+                              setTimeout(() => {
+                                setField('loginId', entry.result.loginId);
+                                setField('profileName', entry.args.profileName || 'Default');
+                              }, 0);
+                            }}
+                            style={secondaryBtnStyle}
+                          >
+                            Close login
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-          </article>
-        ))}
-      </section>
+          )}
+        </div>
+      </div>
     </main>
   );
 }
 
-function CodeBlock({ code }: { code: string }) {
-  return (
-    <pre style={codeBlockStyle}>
-      <code>{code}</code>
-    </pre>
-  );
+// ── Utility ─────────────────────────────────────────────────────────────────
+
+/** Parse MCP-shaped response { content: [{ text }] } into plain object */
+function parseMcpResult(raw: any): any {
+  if (raw?.content?.[0]?.text) {
+    try {
+      return JSON.parse(raw.content[0].text);
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
 }
 
+/** JSON.stringify replacer: truncate qrImageDataUrl in displayed output */
+function stripQrImages(key: string, value: any): any {
+  if (key === 'qrImageDataUrl' && typeof value === 'string' && value.length > 80) {
+    return value.slice(0, 40) + '...[QR image truncated]';
+  }
+  return value;
+}
+
+// ── Styles ──────────────────────────────────────────────────────────────────
+
 const pageStyle: React.CSSProperties = {
-  maxWidth: 1120,
+  maxWidth: 1200,
   margin: '0 auto',
-  padding: '40px 24px 64px',
+  padding: '32px 24px 64px',
 };
 
-const headerStyle: React.CSSProperties = {
-  marginBottom: 28,
-};
-
-const backLinkStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  marginBottom: 20,
+const navLinkStyle: React.CSSProperties = {
   color: '#2563eb',
   fontSize: 14,
   fontWeight: 600,
@@ -449,169 +662,215 @@ const eyebrowStyle: React.CSSProperties = {
   color: '#047857',
   fontSize: 13,
   fontWeight: 700,
-  letterSpacing: 0,
-  marginBottom: 8,
   textTransform: 'uppercase',
+  marginBottom: 6,
 };
 
 const titleStyle: React.CSSProperties = {
-  fontSize: 34,
-  lineHeight: 1.15,
+  fontSize: 30,
   fontWeight: 800,
-  marginBottom: 12,
   color: '#111827',
+  marginBottom: 8,
 };
 
-const introStyle: React.CSSProperties = {
-  maxWidth: 820,
-  color: '#4b5563',
-  fontSize: 16,
-  lineHeight: 1.7,
+const subtitleStyle: React.CSSProperties = {
+  color: '#6b7280',
+  fontSize: 15,
+  lineHeight: 1.6,
+};
+
+const layoutStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '380px 1fr',
+  gap: 20,
+  alignItems: 'start',
+};
+
+const leftColStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 16,
+};
+
+const rightColStyle: React.CSSProperties = {
+  minWidth: 0,
 };
 
 const panelStyle: React.CSSProperties = {
   background: '#fff',
   border: '1px solid #e5e7eb',
-  borderRadius: 8,
-  padding: 22,
-  marginBottom: 18,
+  borderRadius: 10,
+  padding: 18,
 };
 
-const sectionHeaderStyle: React.CSSProperties = {
-  marginBottom: 18,
+const categoryLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: '#9ca3af',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  marginBottom: 6,
 };
 
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 20,
-  lineHeight: 1.25,
-  fontWeight: 750,
-  marginBottom: 10,
-  color: '#111827',
-};
-
-const bodyTextStyle: React.CSSProperties = {
-  color: '#4b5563',
-  fontSize: 14,
-  lineHeight: 1.7,
-  marginBottom: 12,
-};
-
-const checkGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-  gap: 14,
-};
-
-const checkItemStyle: React.CSSProperties = {
-  display: 'grid',
-  gap: 6,
-  color: '#374151',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
-
-const toolListStyle: React.CSSProperties = {
-  marginTop: 28,
-};
-
-const toolCardStyle: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e5e7eb',
-  borderRadius: 8,
-  padding: 22,
-  marginBottom: 18,
-};
-
-const toolHeaderStyle: React.CSSProperties = {
+const toolTabGridStyle: React.CSSProperties = {
   display: 'flex',
-  justifyContent: 'space-between',
-  gap: 16,
-  marginBottom: 10,
+  flexWrap: 'wrap',
+  gap: 6,
 };
 
-const toolTitleStyle: React.CSSProperties = {
-  fontSize: 18,
-  fontWeight: 750,
-  color: '#111827',
-  marginBottom: 4,
+const toolTabStyle: React.CSSProperties = {
+  padding: '5px 11px',
+  fontSize: 13,
+  fontWeight: 600,
+  border: '1px solid #e5e7eb',
+  borderRadius: 6,
+  background: '#fff',
+  color: '#374151',
+  cursor: 'pointer',
 };
 
-const toolNameStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  maxWidth: '100%',
-  whiteSpace: 'normal',
-  overflowWrap: 'anywhere',
+const toolTabActiveStyle: React.CSSProperties = {
+  background: '#047857',
+  color: '#fff',
+  borderColor: '#047857',
+};
+
+const toolBadgeStyle: React.CSSProperties = {
+  fontSize: 11,
   color: '#065f46',
   background: '#ecfdf5',
   border: '1px solid #a7f3d0',
-  borderRadius: 6,
-  padding: '3px 7px',
+  borderRadius: 5,
+  padding: '2px 6px',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
   fontSize: 12,
-};
-
-const purposeStyle: React.CSSProperties = {
-  color: '#4b5563',
-  fontSize: 14,
-  lineHeight: 1.7,
-  marginBottom: 16,
-};
-
-const twoColumnStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-  gap: 16,
-  marginBottom: 18,
-};
-
-const argsGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-  gap: 18,
-};
-
-const miniTitleStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 750,
+  fontWeight: 600,
   color: '#374151',
-  marginBottom: 8,
+  marginBottom: 4,
 };
 
-const codeBlockStyle: React.CSSProperties = {
-  background: '#111827',
-  color: '#f9fafb',
-  borderRadius: 8,
-  padding: 14,
-  overflowX: 'auto',
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '7px 10px',
   fontSize: 13,
-  lineHeight: 1.55,
-};
-
-const definitionListStyle: React.CSSProperties = {
-  display: 'grid',
-  gap: 10,
-};
-
-const definitionRowStyle: React.CSSProperties = {
-  display: 'grid',
-  gap: 3,
-};
-
-const definitionTermStyle: React.CSSProperties = {
+  border: '1px solid #d1d5db',
+  borderRadius: 6,
+  background: '#fff',
   color: '#111827',
-  fontSize: 13,
+  boxSizing: 'border-box',
+};
+
+const runBtnStyle: React.CSSProperties = {
+  padding: '8px 22px',
+  fontSize: 14,
   fontWeight: 700,
+  background: '#047857',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 7,
+  cursor: 'pointer',
 };
 
-const definitionDescStyle: React.CSSProperties = {
-  color: '#4b5563',
+const secondaryBtnStyle: React.CSSProperties = {
+  padding: '6px 14px',
   fontSize: 13,
-  lineHeight: 1.55,
+  fontWeight: 600,
+  background: '#f3f4f6',
+  color: '#374151',
+  border: '1px solid #d1d5db',
+  borderRadius: 6,
+  cursor: 'pointer',
+};
+
+const closeBtnStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  fontSize: 12,
+  fontWeight: 600,
+  background: '#fef2f2',
+  color: '#dc2626',
+  border: '1px solid #fecaca',
+  borderRadius: 5,
+  cursor: 'pointer',
+};
+
+const qrPanelStyle: React.CSSProperties = {
+  background: '#fff',
+  border: '2px solid #fde68a',
+  borderRadius: 10,
+  padding: 18,
+};
+
+const statusBadgeContainerStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  marginTop: 12,
+  justifyContent: 'center',
+  flexWrap: 'wrap',
+};
+
+const statusBadgeStyle: React.CSSProperties = {
+  padding: '3px 10px',
+  fontSize: 12,
+  fontWeight: 700,
+  borderRadius: 20,
+};
+
+const emptyResultStyle: React.CSSProperties = {
+  background: '#f9fafb',
+  border: '1px solid #e5e7eb',
+  borderRadius: 10,
+  padding: '48px 24px',
+  textAlign: 'center',
+  color: '#9ca3af',
+  fontSize: 14,
+};
+
+const resultCardStyle: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 8,
+  overflow: 'hidden',
+};
+
+const resultHeaderBtnStyle: React.CSSProperties = {
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: '10px 12px',
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  gap: 8,
+};
+
+const resultDotStyle: React.CSSProperties = {
+  width: 8,
+  height: 8,
+  borderRadius: '50%',
+  flexShrink: 0,
+};
+
+const miniLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: '#9ca3af',
+  textTransform: 'uppercase',
+  marginBottom: 4,
+};
+
+const resultCodeStyle: React.CSSProperties = {
+  background: '#f9fafb',
+  border: '1px solid #e5e7eb',
+  borderRadius: 6,
+  padding: 10,
+  fontSize: 12,
+  lineHeight: 1.5,
+  overflowX: 'auto',
   margin: 0,
-};
-
-const noteListStyle: React.CSSProperties = {
-  color: '#4b5563',
-  fontSize: 13,
-  lineHeight: 1.6,
-  paddingLeft: 18,
+  maxHeight: 400,
+  overflowY: 'auto',
 };
