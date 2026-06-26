@@ -407,7 +407,7 @@ export default function KakaoPlayground() {
           markLoggedIn();
           setQrImage(null);
           recordResult('kakao_login_status', { profileName, loginId: id }, parsed, 0);
-          await callTool('kakao_close_login', { profileName, loginId: id }).catch(() => {});
+          // Backend pollKakaoLoginSession commits cookies and closes the browser — do not call close_login here
           updateSession({ loginId: null, loginService: null, loginStatus: 'logged_in' });
         } else if (parsed.status === 'expired' || parsed.status === 'failed' || parsed.status === 'closed') {
           stopPolling();
@@ -446,13 +446,28 @@ export default function KakaoPlayground() {
   const handleRun = async () => {
     const args = buildArgs(selectedTool, fieldValues, session.profileName);
 
+    const loginInProgress = loginPolling
+      || session.loginStatus === 'waiting_for_qr'
+      || (session.loginId && session.loginStatus !== 'logged_in');
+
+    if (HEADLESS_BROWSER_TOOLS.has(selectedTool.name) && loginInProgress) {
+      recordResult(
+        selectedTool.name,
+        args,
+        null,
+        0,
+        'QR login still in progress. Wait until status is logged_in before listing channels or bots.',
+      );
+      return;
+    }
+
     if (HEADLESS_BROWSER_TOOLS.has(selectedTool.name) && !session.kakaoLoggedIn) {
       recordResult(
         selectedTool.name,
         args,
         null,
         0,
-        'Log in with QR first (Login tab → Show QR code). Headless list/create tools cannot display QR — EGDesk would wait silently otherwise.',
+        'Log in with QR first (Login tab → Show QR code). Headless tools reuse the saved Chrome profile session.',
       );
       return;
     }
@@ -461,10 +476,6 @@ export default function KakaoPlayground() {
     startRunningTimer(selectedTool.name);
 
     try {
-      if (HEADLESS_BROWSER_TOOLS.has(selectedTool.name)) {
-        await releaseLoginBrowser();
-      }
-
       const parsed = await runTool(selectedTool.name, args);
 
       if (selectedTool.name === 'kakao_begin_login') {
@@ -473,18 +484,21 @@ export default function KakaoPlayground() {
           loginId: parsed.loginId || null,
           loginService: service,
           loginStatus: parsed.status || null,
+          ...(parsed.status === 'waiting_for_qr' ? { kakaoLoggedIn: false } : {}),
         });
 
         if (parsed.qrImageDataUrl) setQrImage(parsed.qrImageDataUrl);
 
         if (parsed.status === 'logged_in') {
           markLoggedIn();
-          await releaseLoginBrowser();
+          updateSession({ loginId: null, loginService: null, loginStatus: 'logged_in' });
         } else if (parsed.loginId && parsed.status === 'waiting_for_qr') {
           startPolling(parsed.loginId, session.profileName, service);
         }
+      } else if (parsed.success === false && parsed.needsLogin) {
+        updateSession({ kakaoLoggedIn: false });
+        if (parsed.qrImageDataUrl) setQrImage(parsed.qrImageDataUrl);
       } else if (parsed.success !== false) {
-        // list/create tools also confirm an active session when they succeed
         markLoggedIn();
       }
     } catch (err: any) {
@@ -914,7 +928,26 @@ function DisplayResultView({ data, tool, selectedChannelSearchId, onSelectChanne
   }
 
   if (data.success === false) {
-    return <p style={{ color: '#991b1b', fontSize: 14, margin: 0 }}>{data.error || 'Request failed'}</p>;
+    return (
+      <div style={{ display: 'grid', gap: 12 }}>
+        <p style={{ color: '#991b1b', fontSize: 14, margin: 0 }}>{data.error || 'Request failed'}</p>
+        {data.needsLogin && (
+          <p style={{ color: '#92400e', fontSize: 13, margin: 0 }}>
+            Use the Login tab → Show QR code, wait for logged_in, then retry.
+          </p>
+        )}
+        {data.qrImageDataUrl && (
+          <div style={{ textAlign: 'center' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={data.qrImageDataUrl}
+              alt="Kakao QR code"
+              style={{ width: 200, height: 200, borderRadius: 10, border: '1px solid #e5e7eb' }}
+            />
+          </div>
+        )}
+      </div>
+    );
   }
 
   const hasQr = typeof data.qrImageDataUrl === 'string' && data.qrImageDataUrl.startsWith('data:');
