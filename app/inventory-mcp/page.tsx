@@ -34,7 +34,7 @@ const TOOL: ToolDef = {
       type: 'string',
       required: true,
       placeholder: '/Users/you/projects/my-store-app',
-      hint: 'Full path to the target Next.js or Vite project root (where package.json lives).',
+      hint: 'Defaults to this demo app\'s folder — change it to inject into another Next.js or Vite project.',
     },
     {
       name: 'framework',
@@ -68,6 +68,7 @@ type HistoryEntry = {
 type InstallStatus = {
   installed: boolean;
   routePath: string;
+  projectPath?: string;
 };
 
 function parseMcpResult(raw: any): any {
@@ -105,19 +106,16 @@ export default function InventoryMcpPlayground() {
       const res = await apiFetch('/api/inventory/status');
       const json = await res.json();
       setInstallStatus(json);
+      if (json.projectPath) {
+        setFieldValues(prev => ({
+          ...prev,
+          projectPath: prev.projectPath || json.projectPath,
+        }));
+      }
     } catch {
       setInstallStatus(null);
     }
   }, []);
-
-  useEffect(() => {
-    const bp = getEgdeskBasePath();
-    setLandingHref(bp || '/');
-    setDbHref(`${bp}/database`);
-    setKakaoHref(`${bp}/kakao-mcp`);
-    setScannerHref(`${bp}/inventory-scanner`);
-    loadStatus();
-  }, [loadStatus]);
 
   useEffect(() => {
     const defaults: Record<string, string> = {};
@@ -128,6 +126,15 @@ export default function InventoryMcpPlayground() {
     }
     setFieldValues(defaults);
   }, []);
+
+  useEffect(() => {
+    const bp = getEgdeskBasePath();
+    setLandingHref(bp || '/');
+    setDbHref(`${bp}/database`);
+    setKakaoHref(`${bp}/kakao-mcp`);
+    setScannerHref(`${bp}/inventory-scanner`);
+    loadStatus();
+  }, [loadStatus]);
 
   const recordResult = useCallback((
     tool: string,
@@ -224,7 +231,7 @@ export default function InventoryMcpPlayground() {
             {installStatus?.installed ? 'Scanner installed' : 'Scanner not installed yet'}
           </p>
           <p style={hintStyle}>
-            Run the tool below with this repo&apos;s path to add the scanner here, then open{' '}
+            Project path is pre-filled below — run the tool to install the scanner here, then open{' '}
             <a href={scannerHref} style={navLinkStyle}>{lastRoutePath}</a>.
           </p>
         </div>

@@ -17,5 +17,6 @@ export async function GET() {
   return NextResponse.json({
     installed: fs.existsSync(scannerComponent),
     routePath: '/inventory-scanner',
+    projectPath: process.cwd(),
   });
 }

@@ -100,7 +100,7 @@ const TOOLS: ToolDef[] = [
         name: 'showBrowser',
         label: 'Show browser window (debug)',
         type: 'boolean',
-        defaultValue: true,
+        defaultValue: false,
         apiName: 'headless',
         invertBoolean: true,
       },
