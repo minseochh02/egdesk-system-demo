@@ -15,10 +15,10 @@ type DemoPage = {
 const pages: DemoPage[] = [
   {
     title: 'Database Demo',
-    description: 'Fetch rows, insert demo data, and inspect how EGDesk routes database calls through generated helpers.',
+    description: 'Try every database helper — queryTable, insertRows, updateRows, search, and SQL — with live results.',
     href: '/database',
     eyebrow: 'Data helpers',
-    items: ['queryTable', 'insertRows', 'apiFetch'],
+    items: ['queryTable', 'insertRows', 'updateRows', 'searchTable'],
   },
   {
     title: 'Kakao MCP Guide',
