@@ -49,7 +49,7 @@ type PersistedSession = {
 
 function defaultSession(): PersistedSession {
   return {
-    profileName: 'Default',
+    profileName: 'default',
     loginId: null,
     loginStatus: null,
     loginService: null,
@@ -100,7 +100,7 @@ const TOOLS: ToolDef[] = [
         name: 'showBrowser',
         label: 'Show browser window (debug)',
         type: 'boolean',
-        defaultValue: false,
+        defaultValue: true,
         apiName: 'headless',
         invertBoolean: true,
       },
@@ -588,7 +588,7 @@ export default function KakaoPlayground() {
             type="text"
             value={session.profileName}
             onChange={e => updateSession({ profileName: e.target.value })}
-            placeholder="Default"
+            placeholder="default"
             style={inputStyle}
           />
           <p style={hintStyle}>Persistent browser profile in EGDesk — sessions are remembered per profile.</p>
