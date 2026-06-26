@@ -12,6 +12,73 @@ type ToolDoc = {
 
 const tools: ToolDoc[] = [
   {
+    name: 'kakao_begin_login',
+    title: 'Begin Kakao Login',
+    purpose: 'Start Kakao QR login in a persistent browser profile. Returns a loginId and QR image for the user to scan. Must be called before any other Kakao tool if the session is not already authenticated.',
+    helper: `const login = await beginKakaoLogin('Default', {
+  service: 'chatbot',
+  waitMs: 30000,
+});
+// login.qrImageDataUrl contains the QR code to display
+// login.loginId is used for polling and closing`,
+    raw: `await callKakaoTool('kakao_begin_login', {
+  profileName: 'Default',
+  service: 'chatbot',
+  waitMs: 30000,
+});`,
+    args: [
+      { name: 'profileName', detail: 'Google profile name used by EGDesk automation.' },
+      { name: 'service', detail: 'Optional. "business" or "chatbot". Defaults to "chatbot".' },
+      { name: 'headless', detail: 'Optional. Run browser headless. Defaults to true.' },
+      { name: 'waitMs', detail: 'Optional. Milliseconds to wait for login before returning. Defaults to 0 (return immediately with QR).' },
+    ],
+    notes: [
+      'Returns a QR image data URL that the user must scan with KakaoTalk on their phone.',
+      'If already logged in, returns immediately with status "logged_in".',
+      'Poll with kakaoLoginStatus() until status changes from "waiting_for_qr" to "logged_in".',
+      'Login sessions expire after 5 minutes.',
+    ],
+  },
+  {
+    name: 'kakao_login_status',
+    title: 'Login Status',
+    purpose: 'Poll the status of a Kakao QR login session. Use after beginKakaoLogin to check if the user has scanned the QR code.',
+    helper: `const status = await kakaoLoginStatus('Default', login.loginId);
+if (status.status === 'logged_in') {
+  // proceed with channel/bot operations
+}`,
+    raw: `await callKakaoTool('kakao_login_status', {
+  profileName: 'Default',
+  loginId: login.loginId,
+});`,
+    args: [
+      { name: 'profileName', detail: 'Google profile name (must match the begin_login call).' },
+      { name: 'loginId', detail: 'Login session ID returned by kakao_begin_login.' },
+    ],
+    notes: [
+      'Status values: "starting", "waiting_for_qr", "logged_in", "expired", "failed", "closed".',
+      'The qrImageDataUrl may refresh between polls — always display the latest one.',
+    ],
+  },
+  {
+    name: 'kakao_close_login',
+    title: 'Close Login',
+    purpose: 'Close a pending Kakao login browser session and free resources.',
+    helper: `await closeKakaoLogin('Default', login.loginId);`,
+    raw: `await callKakaoTool('kakao_close_login', {
+  profileName: 'Default',
+  loginId: login.loginId,
+});`,
+    args: [
+      { name: 'profileName', detail: 'Google profile name (must match the begin_login call).' },
+      { name: 'loginId', detail: 'Login session ID returned by kakao_begin_login.' },
+    ],
+    notes: [
+      'Always close login sessions when done to free the browser process.',
+      'Closing an already-closed or expired session returns an error but is safe to call.',
+    ],
+  },
+  {
     name: 'kakao_list_channels',
     title: 'List Kakao Channels',
     purpose: 'Find managed Kakao Channels for a Google profile. Use this before selecting a channel or creating a bot.',
@@ -198,6 +265,9 @@ const tools: ToolDoc[] = [
 
 const setupSnippet = `import {
   callKakaoTool,
+  beginKakaoLogin,
+  kakaoLoginStatus,
+  closeKakaoLogin,
   listKakaoChannels,
   listKakaoBots,
   listKakaoResources,
@@ -210,6 +280,22 @@ const setupSnippet = `import {
 
 const flowSnippet = `const profileName = 'Default';
 
+// Step 0: Ensure Kakao login
+const login = await beginKakaoLogin(profileName, {
+  service: 'chatbot',
+  waitMs: 30000,
+});
+
+if (login.status === 'waiting_for_qr') {
+  // Display login.qrImageDataUrl to user and poll
+  let status = login;
+  while (status.status === 'waiting_for_qr') {
+    await new Promise(r => setTimeout(r, 2000));
+    status = await kakaoLoginStatus(profileName, login.loginId);
+  }
+}
+
+// Step 1: Create or reuse channel
 const channel = await createKakaoChannel({
   profileName,
   channelName: 'Demo Support',
