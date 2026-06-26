@@ -27,13 +27,11 @@ type ToolDef = {
   fields: FieldDef[];
   category: 'login' | 'channels' | 'bots' | 'advanced';
   internal?: boolean;
-  /** Which Kakao login must be completed before this tool is available */
-  requiresLogin?: 'chatbot' | 'business';
 };
 
 const SERVICE_HINTS: Record<string, string> = {
-  chatbot: 'Opens chatbot.kakao.com — use this to list/create bots and configure skills.',
-  business: 'Opens business.kakao.com — use this to list/create Kakao Business channels.',
+  chatbot: 'Opens chatbot.kakao.com for the QR flow. Same Kakao account — one scan logs you in everywhere.',
+  business: 'Opens business.kakao.com for the QR flow. Same Kakao account — one scan logs you in everywhere.',
 };
 
 const SESSION_STORAGE_KEY = 'egdesk-kakao-playground';
@@ -43,8 +41,7 @@ type PersistedSession = {
   loginId: string | null;
   loginStatus: string | null;
   loginService: 'chatbot' | 'business' | null;
-  chatbotLoggedIn: boolean;
-  businessLoggedIn: boolean;
+  kakaoLoggedIn: boolean;
   selectedChannel: { searchId: string; name: string } | null;
   cachedChannels: Array<{ id?: string; name?: string; searchId?: string; status?: string; connectedBotName?: string }>;
   cachedBots: Array<{ id?: string; name?: string; status?: string; isInactive?: boolean }>;
@@ -56,8 +53,7 @@ function defaultSession(): PersistedSession {
     loginId: null,
     loginStatus: null,
     loginService: null,
-    chatbotLoggedIn: false,
-    businessLoggedIn: false,
+    kakaoLoggedIn: false,
     selectedChannel: null,
     cachedChannels: [],
     cachedBots: [],
@@ -68,7 +64,15 @@ function loadSession(): PersistedSession {
   if (typeof window === 'undefined') return defaultSession();
   try {
     const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
-    if (raw) return { ...defaultSession(), ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // migrate older sessions that tracked chatbot/business separately
+      const kakaoLoggedIn = parsed.kakaoLoggedIn
+        ?? parsed.chatbotLoggedIn
+        ?? parsed.businessLoggedIn
+        ?? false;
+      return { ...defaultSession(), ...parsed, kakaoLoggedIn };
+    }
   } catch { /* ignore */ }
   return defaultSession();
 }
@@ -82,12 +86,12 @@ const TOOLS: ToolDef[] = [
   {
     name: 'kakao_begin_login',
     title: 'Log in with QR',
-    description: 'Scan with KakaoTalk. Choose the site you need — channel tools need Business login; bot tools need Chatbot login.',
+    description: 'Scan once with KakaoTalk. EGDesk saves the session in your Chrome profile — channel and bot tools share the same login.',
     category: 'login',
     fields: [
       {
         name: 'service',
-        label: 'Which Kakao site?',
+        label: 'Start from which site?',
         type: 'select',
         options: ['chatbot', 'business'],
         defaultValue: 'chatbot',
@@ -105,9 +109,8 @@ const TOOLS: ToolDef[] = [
   {
     name: 'kakao_list_channels',
     title: 'List my channels',
-    description: 'Fetch Kakao Business channels for this profile.',
+    description: 'Fetch Kakao Business channels. Prompts for QR only if not already logged in.',
     category: 'channels',
-    requiresLogin: 'business',
     fields: [
       { name: 'enrichDetails', label: 'Include extra details', type: 'boolean', defaultValue: true },
     ],
@@ -117,7 +120,6 @@ const TOOLS: ToolDef[] = [
     title: 'Create channel',
     description: 'Create a new Kakao Business channel (or reuse if it already exists).',
     category: 'channels',
-    requiresLogin: 'business',
     fields: [
       { name: 'channelName', label: 'Channel name', type: 'string', required: true, placeholder: 'Demo Support' },
       { name: 'searchId', label: 'Search ID (without @)', type: 'string', required: true, placeholder: 'demo-support' },
@@ -127,9 +129,8 @@ const TOOLS: ToolDef[] = [
   {
     name: 'kakao_list_bots',
     title: 'List my bots',
-    description: 'Fetch chatbot admin bots for this profile.',
+    description: 'Fetch chatbot admin bots. Prompts for QR only if not already logged in.',
     category: 'bots',
-    requiresLogin: 'chatbot',
     fields: [],
   },
   {
@@ -137,7 +138,6 @@ const TOOLS: ToolDef[] = [
     title: 'Create bot',
     description: 'Create a chatbot, bind it to a channel, and deploy the skill.',
     category: 'bots',
-    requiresLogin: 'chatbot',
     fields: [
       { name: 'botName', label: 'Bot name', type: 'string', required: true, placeholder: 'Demo Support Bot' },
       { name: 'channelSearchId', label: 'Channel search ID', type: 'string', required: true, placeholder: '@demo-support' },
@@ -174,8 +174,8 @@ const VISIBLE_TOOLS = TOOLS.filter(t => !t.internal);
 
 const CATEGORIES = [
   { key: 'login', label: 'Login' },
-  { key: 'channels', label: 'Channels', requiresLogin: 'business' as const },
-  { key: 'bots', label: 'Bots', requiresLogin: 'chatbot' as const },
+  { key: 'channels', label: 'Channels' },
+  { key: 'bots', label: 'Bots' },
   { key: 'advanced', label: 'Advanced' },
 ] as const;
 
@@ -207,20 +207,6 @@ function buildArgs(tool: ToolDef, values: Record<string, string>, profileName: s
     }
   }
   return args;
-}
-
-function isCategoryUnlocked(
-  requiresLogin: 'chatbot' | 'business' | undefined,
-  session: PersistedSession,
-): boolean {
-  if (!requiresLogin) return true;
-  return requiresLogin === 'chatbot' ? session.chatbotLoggedIn : session.businessLoggedIn;
-}
-
-function loginRequiredMessage(requiresLogin: 'chatbot' | 'business'): string {
-  return requiresLogin === 'business'
-    ? 'Log in with QR → choose "business" first. Channel tools need business.kakao.com access.'
-    : 'Log in with QR → choose "chatbot" first. Bot tools need chatbot.kakao.com access.';
 }
 
 type HistoryEntry = {
@@ -258,11 +244,8 @@ export default function KakaoPlayground() {
     });
   }, []);
 
-  const markLoggedIn = useCallback((service: 'chatbot' | 'business') => {
-    updateSession({
-      ...(service === 'chatbot' ? { chatbotLoggedIn: true } : { businessLoggedIn: true }),
-      loginStatus: 'logged_in',
-    });
+  const markLoggedIn = useCallback(() => {
+    updateSession({ kakaoLoggedIn: true, loginStatus: 'logged_in' });
   }, [updateSession]);
 
   useEffect(() => {
@@ -375,7 +358,7 @@ export default function KakaoPlayground() {
 
         if (parsed.status === 'logged_in') {
           stopPolling();
-          markLoggedIn(service);
+          markLoggedIn();
           setQrImage(null);
           recordResult('kakao_login_status', { profileName, loginId: id }, parsed, 0);
         } else if (parsed.status === 'expired' || parsed.status === 'failed' || parsed.status === 'closed') {
@@ -413,10 +396,6 @@ export default function KakaoPlayground() {
   };
 
   const handleRun = async () => {
-    if (selectedTool.requiresLogin && !isCategoryUnlocked(selectedTool.requiresLogin, session)) {
-      return;
-    }
-
     const args = buildArgs(selectedTool, fieldValues, session.profileName);
     setRunning(true);
 
@@ -434,10 +413,13 @@ export default function KakaoPlayground() {
         if (parsed.qrImageDataUrl) setQrImage(parsed.qrImageDataUrl);
 
         if (parsed.status === 'logged_in') {
-          markLoggedIn(service);
+          markLoggedIn();
         } else if (parsed.loginId && parsed.status === 'waiting_for_qr') {
           startPolling(parsed.loginId, session.profileName, service);
         }
+      } else if (parsed.success !== false) {
+        // list/create tools also confirm an active session when they succeed
+        markLoggedIn();
       }
     } catch (err: any) {
       recordResult(selectedTool.name, args, null, 0, err.message || String(err));
@@ -484,13 +466,8 @@ export default function KakaoPlayground() {
   };
 
   const selectTool = (tool: ToolDef) => {
-    if (tool.requiresLogin && !isCategoryUnlocked(tool.requiresLogin, session)) return;
     setSelectedTool(tool);
   };
-
-  const toolLocked = selectedTool.requiresLogin
-    ? !isCategoryUnlocked(selectedTool.requiresLogin, session)
-    : false;
 
   return (
     <main style={pageStyle}>
@@ -521,8 +498,15 @@ export default function KakaoPlayground() {
           <p style={hintStyle}>Persistent browser profile in EGDesk — sessions are remembered per profile.</p>
         </div>
         <div style={sessionPillsStyle}>
-          <SessionPill label="Chatbot" ok={session.chatbotLoggedIn} site="chatbot.kakao.com" />
-          <SessionPill label="Business" ok={session.businessLoggedIn} site="business.kakao.com" />
+          <span style={{
+            ...statusBadgeStyle,
+            background: session.kakaoLoggedIn ? '#dcfce7' : '#f3f4f6',
+            color: session.kakaoLoggedIn ? '#166534' : '#6b7280',
+            borderRadius: 8,
+            padding: '6px 10px',
+          }}>
+            {session.kakaoLoggedIn ? 'Kakao logged in ✓' : 'Kakao not logged in — scan QR or run a list tool'}
+          </span>
           {session.selectedChannel && (
             <span style={selectedChannelPillStyle}>
               Channel: <code style={inlineCodeStyle}>{session.selectedChannel.searchId}</code>
@@ -535,42 +519,25 @@ export default function KakaoPlayground() {
         {/* Left: Tool picker + form */}
         <div style={leftColStyle}>
           <div style={panelStyle}>
-            {CATEGORIES.map(cat => {
-              const catLocked = 'requiresLogin' in cat && cat.requiresLogin
-                ? !isCategoryUnlocked(cat.requiresLogin, session)
-                : false;
-              return (
-                <div key={cat.key} style={{ marginBottom: 16 }}>
-                  <div style={categoryLabelStyle}>{cat.label}</div>
-                  {catLocked && (
-                    <p style={{ ...hintStyle, color: '#b45309', marginBottom: 8 }}>
-                      {loginRequiredMessage(cat.requiresLogin!)}
-                    </p>
-                  )}
-                  <div style={toolTabGridStyle}>
-                    {VISIBLE_TOOLS.filter(t => t.category === cat.key).map(tool => {
-                      const locked = tool.requiresLogin
-                        ? !isCategoryUnlocked(tool.requiresLogin, session)
-                        : false;
-                      return (
-                        <button
-                          key={tool.name}
-                          onClick={() => selectTool(tool)}
-                          disabled={locked}
-                          style={{
-                            ...toolTabStyle,
-                            ...(selectedTool.name === tool.name ? toolTabActiveStyle : {}),
-                            ...(locked ? toolTabLockedStyle : {}),
-                          }}
-                        >
-                          {tool.title}
-                        </button>
-                      );
-                    })}
-                  </div>
+            {CATEGORIES.map(cat => (
+              <div key={cat.key} style={{ marginBottom: 16 }}>
+                <div style={categoryLabelStyle}>{cat.label}</div>
+                <div style={toolTabGridStyle}>
+                  {VISIBLE_TOOLS.filter(t => t.category === cat.key).map(tool => (
+                    <button
+                      key={tool.name}
+                      onClick={() => selectTool(tool)}
+                      style={{
+                        ...toolTabStyle,
+                        ...(selectedTool.name === tool.name ? toolTabActiveStyle : {}),
+                      }}
+                    >
+                      {tool.title}
+                    </button>
+                  ))}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
 
           {/* Selected tool form */}
@@ -582,81 +549,71 @@ export default function KakaoPlayground() {
             </div>
             <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 16 }}>{selectedTool.description}</p>
 
-            {toolLocked && selectedTool.requiresLogin && (
-              <div style={lockedNoticeStyle}>
-                {loginRequiredMessage(selectedTool.requiresLogin)}
-              </div>
-            )}
-
-            {!toolLocked && (
-              <>
-                <div style={{ display: 'grid', gap: 12 }}>
-                  {selectedTool.fields.map(field => (
-                    <div key={field.name}>
-                      <label style={labelStyle}>
-                        {field.label}
-                        {field.required && <span style={{ color: '#dc2626' }}> *</span>}
-                      </label>
-                      {field.type === 'boolean' ? (
-                        <select
-                          value={fieldValues[field.name] ?? String(field.defaultValue ?? 'true')}
-                          onChange={e => setField(field.name, e.target.value)}
-                          style={inputStyle}
-                        >
-                          <option value="true">Yes</option>
-                          <option value="false">No</option>
-                        </select>
-                      ) : field.type === 'select' ? (
-                        <select
-                          value={fieldValues[field.name] ?? (field.defaultValue as string) ?? ''}
-                          onChange={e => setField(field.name, e.target.value)}
-                          style={inputStyle}
-                        >
-                          {field.name === 'service' ? (
-                            <>
-                              <option value="chatbot">Chatbot Admin (chatbot.kakao.com)</option>
-                              <option value="business">Business Channels (business.kakao.com)</option>
-                            </>
-                          ) : (
-                            field.options?.map(opt => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))
-                          )}
-                        </select>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {selectedTool.fields.map(field => (
+                <div key={field.name}>
+                  <label style={labelStyle}>
+                    {field.label}
+                    {field.required && <span style={{ color: '#dc2626' }}> *</span>}
+                  </label>
+                  {field.type === 'boolean' ? (
+                    <select
+                      value={fieldValues[field.name] ?? String(field.defaultValue ?? 'true')}
+                      onChange={e => setField(field.name, e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  ) : field.type === 'select' ? (
+                    <select
+                      value={fieldValues[field.name] ?? (field.defaultValue as string) ?? ''}
+                      onChange={e => setField(field.name, e.target.value)}
+                      style={inputStyle}
+                    >
+                      {field.name === 'service' ? (
+                        <>
+                          <option value="chatbot">Chatbot Admin (chatbot.kakao.com)</option>
+                          <option value="business">Business Channels (business.kakao.com)</option>
+                        </>
                       ) : (
-                        <input
-                          type={field.type === 'number' ? 'number' : 'text'}
-                          value={fieldValues[field.name] ?? ''}
-                          onChange={e => setField(field.name, e.target.value)}
-                          placeholder={field.placeholder}
-                          style={inputStyle}
-                        />
+                        field.options?.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))
                       )}
-                      {field.name === 'service' && (
-                        <p style={hintStyle}>
-                          {SERVICE_HINTS[fieldValues.service || 'chatbot']}
-                        </p>
-                      )}
-                      {field.name === 'channelSearchId' && session.selectedChannel && (
-                        <p style={hintStyle}>
-                          Pre-filled from selected channel. List channels first, then pick one in Display.
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={field.type === 'number' ? 'number' : 'text'}
+                      value={fieldValues[field.name] ?? ''}
+                      onChange={e => setField(field.name, e.target.value)}
+                      placeholder={field.placeholder}
+                      style={inputStyle}
+                    />
+                  )}
+                  {field.name === 'service' && (
+                    <p style={hintStyle}>
+                      {SERVICE_HINTS[fieldValues.service || 'chatbot']}
+                    </p>
+                  )}
+                  {field.name === 'channelSearchId' && session.selectedChannel && (
+                    <p style={hintStyle}>
+                      Pre-filled from selected channel. List channels first, then pick one in Display.
+                    </p>
+                  )}
                 </div>
+              ))}
+            </div>
 
-                <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-                  <button
-                    onClick={handleRun}
-                    disabled={running}
-                    style={runBtnStyle}
-                  >
-                    {running ? 'Running...' : selectedTool.name === 'kakao_begin_login' ? 'Show QR code' : 'Run'}
-                  </button>
-                </div>
-              </>
-            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button
+                onClick={handleRun}
+                disabled={running}
+                style={runBtnStyle}
+              >
+                {running ? 'Running...' : selectedTool.name === 'kakao_begin_login' ? 'Show QR code' : 'Run'}
+              </button>
+            </div>
           </div>
 
           {/* QR code panel (login flow) */}
@@ -917,9 +874,10 @@ function DisplayResultView({ data, tool, selectedChannelSearchId, onSelectChanne
             {data.message && <><dt style={kvTermStyle}>Message</dt><dd style={kvDescStyle}>{data.message}</dd></>}
             {data.service && (
               <>
-                <dt style={kvTermStyle}>Site</dt>
+                <dt style={kvTermStyle}>Starting site</dt>
                 <dd style={kvDescStyle}>
                   {data.service === 'business' ? 'business.kakao.com' : 'chatbot.kakao.com'}
+                  {' '}(same Kakao account)
                 </dd>
               </>
             )}
@@ -1053,25 +1011,6 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-function SessionPill({ label, ok, site }: { label: string; ok: boolean; site: string }) {
-  return (
-    <span style={{
-      ...statusBadgeStyle,
-      background: ok ? '#dcfce7' : '#f3f4f6',
-      color: ok ? '#166534' : '#6b7280',
-      display: 'inline-flex',
-      flexDirection: 'column',
-      alignItems: 'flex-start',
-      gap: 2,
-      borderRadius: 8,
-      padding: '6px 10px',
-    }}>
-      <span>{ok ? `${label} ✓` : `${label} — not logged in`}</span>
-      <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.85 }}>{site}</span>
-    </span>
-  );
-}
-
 // ── Styles ──────────────────────────────────────────────────────────────────
 
 const pageStyle: React.CSSProperties = {
@@ -1162,11 +1101,6 @@ const toolTabActiveStyle: React.CSSProperties = {
   border: '1px solid #047857',
 };
 
-const toolTabLockedStyle: React.CSSProperties = {
-  opacity: 0.45,
-  cursor: 'not-allowed',
-};
-
 const hintStyle: React.CSSProperties = {
   fontSize: 12,
   color: '#9ca3af',
@@ -1201,16 +1135,6 @@ const selectedChannelPillStyle: React.CSSProperties = {
   border: '1px solid #a7f3d0',
   borderRadius: 8,
   padding: '6px 10px',
-};
-
-const lockedNoticeStyle: React.CSSProperties = {
-  background: '#fffbeb',
-  border: '1px solid #fde68a',
-  borderRadius: 8,
-  padding: 12,
-  fontSize: 13,
-  color: '#92400e',
-  lineHeight: 1.5,
 };
 
 const toolBadgeStyle: React.CSSProperties = {
