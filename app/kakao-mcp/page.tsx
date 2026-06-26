@@ -14,6 +14,10 @@ type FieldDef = {
   required?: boolean;
   placeholder?: string;
   defaultValue?: string | boolean | number;
+  /** Map UI field to a different API argument name */
+  apiName?: string;
+  /** Invert boolean when sending to API (e.g. showBrowser → headless) */
+  invertBoolean?: boolean;
 };
 
 type ToolDef = {
@@ -21,143 +25,171 @@ type ToolDef = {
   title: string;
   description: string;
   fields: FieldDef[];
-  category: 'login' | 'channels' | 'bots' | 'diagnostics';
+  category: 'login' | 'channels' | 'bots' | 'advanced';
+  internal?: boolean;
+  /** Which Kakao login must be completed before this tool is available */
+  requiresLogin?: 'chatbot' | 'business';
 };
+
+const SERVICE_HINTS: Record<string, string> = {
+  chatbot: 'Opens chatbot.kakao.com — use this to list/create bots and configure skills.',
+  business: 'Opens business.kakao.com — use this to list/create Kakao Business channels.',
+};
+
+const SESSION_STORAGE_KEY = 'egdesk-kakao-playground';
+
+type PersistedSession = {
+  profileName: string;
+  loginId: string | null;
+  loginStatus: string | null;
+  loginService: 'chatbot' | 'business' | null;
+  chatbotLoggedIn: boolean;
+  businessLoggedIn: boolean;
+  selectedChannel: { searchId: string; name: string } | null;
+  cachedChannels: Array<{ id?: string; name?: string; searchId?: string; status?: string; connectedBotName?: string }>;
+  cachedBots: Array<{ id?: string; name?: string; status?: string; isInactive?: boolean }>;
+};
+
+function defaultSession(): PersistedSession {
+  return {
+    profileName: 'Default',
+    loginId: null,
+    loginStatus: null,
+    loginService: null,
+    chatbotLoggedIn: false,
+    businessLoggedIn: false,
+    selectedChannel: null,
+    cachedChannels: [],
+    cachedBots: [],
+  };
+}
+
+function loadSession(): PersistedSession {
+  if (typeof window === 'undefined') return defaultSession();
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (raw) return { ...defaultSession(), ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return defaultSession();
+}
+
+function saveSession(session: PersistedSession) {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+}
 
 const TOOLS: ToolDef[] = [
   {
     name: 'kakao_begin_login',
-    title: 'Begin Login',
-    description: 'Start Kakao QR login. Returns a QR code to scan with KakaoTalk.',
+    title: 'Log in with QR',
+    description: 'Scan with KakaoTalk. Choose the site you need — channel tools need Business login; bot tools need Chatbot login.',
     category: 'login',
     fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-      { name: 'service', label: 'Service', type: 'select', options: ['chatbot', 'business'], defaultValue: 'chatbot' },
-      { name: 'headless', label: 'Headless', type: 'boolean', defaultValue: true },
-      { name: 'waitMs', label: 'Wait (ms)', type: 'number', placeholder: '0', defaultValue: 0 },
-    ],
-  },
-  {
-    name: 'kakao_login_status',
-    title: 'Login Status',
-    description: 'Poll login session status by loginId.',
-    category: 'login',
-    fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-      { name: 'loginId', label: 'Login ID', type: 'string', required: true, placeholder: 'From begin_login result' },
-    ],
-  },
-  {
-    name: 'kakao_close_login',
-    title: 'Close Login',
-    description: 'Close a pending login session and free browser resources.',
-    category: 'login',
-    fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-      { name: 'loginId', label: 'Login ID', type: 'string', required: true, placeholder: 'From begin_login result' },
+      {
+        name: 'service',
+        label: 'Which Kakao site?',
+        type: 'select',
+        options: ['chatbot', 'business'],
+        defaultValue: 'chatbot',
+      },
+      {
+        name: 'showBrowser',
+        label: 'Show browser window (debug)',
+        type: 'boolean',
+        defaultValue: false,
+        apiName: 'headless',
+        invertBoolean: true,
+      },
     ],
   },
   {
     name: 'kakao_list_channels',
-    title: 'List Channels',
-    description: 'List Kakao Business channels for a profile.',
+    title: 'List my channels',
+    description: 'Fetch Kakao Business channels for this profile.',
     category: 'channels',
+    requiresLogin: 'business',
     fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-      { name: 'enrichDetails', label: 'Enrich Details', type: 'boolean', defaultValue: true },
-    ],
-  },
-  {
-    name: 'kakao_select_channel',
-    title: 'Select Channel',
-    description: 'Persist a selected channel into EGDesk profile metadata.',
-    category: 'channels',
-    fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-      { name: 'channel.searchId', label: 'Search ID', type: 'string', required: true, placeholder: '@my-channel' },
-      { name: 'channel.name', label: 'Channel Name', type: 'string', placeholder: 'My Channel' },
+      { name: 'enrichDetails', label: 'Include extra details', type: 'boolean', defaultValue: true },
     ],
   },
   {
     name: 'kakao_create_channel',
-    title: 'Create Channel',
-    description: 'Create or reuse a Kakao Business channel.',
+    title: 'Create channel',
+    description: 'Create a new Kakao Business channel (or reuse if it already exists).',
     category: 'channels',
+    requiresLogin: 'business',
     fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-      { name: 'channelName', label: 'Channel Name', type: 'string', required: true, placeholder: 'Demo Support' },
-      { name: 'searchId', label: 'Search ID', type: 'string', required: true, placeholder: 'demo-support' },
-      { name: 'reuseExisting', label: 'Reuse Existing', type: 'boolean', defaultValue: true },
+      { name: 'channelName', label: 'Channel name', type: 'string', required: true, placeholder: 'Demo Support' },
+      { name: 'searchId', label: 'Search ID (without @)', type: 'string', required: true, placeholder: 'demo-support' },
+      { name: 'reuseExisting', label: 'Reuse if already exists', type: 'boolean', defaultValue: true },
     ],
   },
   {
     name: 'kakao_list_bots',
-    title: 'List Bots',
-    description: 'List Kakao chatbot admin bots for a profile.',
+    title: 'List my bots',
+    description: 'Fetch chatbot admin bots for this profile.',
     category: 'bots',
-    fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-    ],
+    requiresLogin: 'chatbot',
+    fields: [],
   },
   {
     name: 'kakao_create_bot',
-    title: 'Create Bot',
-    description: 'Create or reuse a Kakao chatbot, bind channel, configure skill, and deploy.',
+    title: 'Create bot',
+    description: 'Create a chatbot, bind it to a channel, and deploy the skill.',
     category: 'bots',
+    requiresLogin: 'chatbot',
     fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-      { name: 'botName', label: 'Bot Name', type: 'string', required: true, placeholder: 'Demo Support Bot' },
-      { name: 'channelSearchId', label: 'Channel Search ID', type: 'string', required: true, placeholder: '@demo-support' },
-      { name: 'skillUrl', label: 'Skill URL', type: 'string', placeholder: 'https://your-url/kakao/skill' },
-      { name: 'reuseExisting', label: 'Reuse Existing', type: 'boolean', defaultValue: true },
+      { name: 'botName', label: 'Bot name', type: 'string', required: true, placeholder: 'Demo Support Bot' },
+      { name: 'channelSearchId', label: 'Channel search ID', type: 'string', required: true, placeholder: '@demo-support' },
+      { name: 'skillUrl', label: 'Skill URL (optional)', type: 'string', placeholder: 'https://your-url/kakao/skill' },
+      { name: 'reuseExisting', label: 'Reuse if already exists', type: 'boolean', defaultValue: true },
     ],
   },
   {
     name: 'kakao_list_resources',
-    title: 'List Resources',
+    title: 'List everything',
     description: 'List both channels and bots in one call.',
-    category: 'diagnostics',
+    category: 'advanced',
     fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-      { name: 'enrichDetails', label: 'Enrich Details', type: 'boolean', defaultValue: true },
+      { name: 'enrichDetails', label: 'Include channel details', type: 'boolean', defaultValue: true },
     ],
   },
   {
     name: 'kakao_check_callback_statuses',
-    title: 'Check Callbacks',
+    title: 'Check webhooks',
     description: 'Verify bot skill/callback webhook configuration.',
-    category: 'diagnostics',
-    fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-    ],
+    category: 'advanced',
+    fields: [],
   },
   {
     name: 'kakao_repair_callback_setup',
-    title: 'Repair Callbacks',
-    description: 'Repair missing or stale callback configuration and deploy.',
-    category: 'diagnostics',
-    fields: [
-      { name: 'profileName', label: 'Profile', type: 'string', required: true, placeholder: 'Default' },
-    ],
+    title: 'Repair webhooks',
+    description: 'Fix missing or stale callback configuration and redeploy.',
+    category: 'advanced',
+    fields: [],
   },
 ];
 
+const VISIBLE_TOOLS = TOOLS.filter(t => !t.internal);
+
 const CATEGORIES = [
   { key: 'login', label: 'Login' },
-  { key: 'channels', label: 'Channels' },
-  { key: 'bots', label: 'Bots' },
-  { key: 'diagnostics', label: 'Diagnostics' },
+  { key: 'channels', label: 'Channels', requiresLogin: 'business' as const },
+  { key: 'bots', label: 'Bots', requiresLogin: 'chatbot' as const },
+  { key: 'advanced', label: 'Advanced' },
 ] as const;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function buildArgs(tool: ToolDef, values: Record<string, string>): Record<string, any> {
-  const args: Record<string, any> = {};
+function buildArgs(tool: ToolDef, values: Record<string, string>, profileName: string): Record<string, any> {
+  const args: Record<string, any> = { profileName };
+
   for (const field of tool.fields) {
     const raw = values[field.name];
     if (raw === undefined || raw === '') continue;
 
-    // Handle nested fields like channel.searchId
+    const apiKey = field.apiName || field.name;
+
     if (field.name.includes('.')) {
       const [parent, child] = field.name.split('.');
       if (!args[parent]) args[parent] = {};
@@ -166,14 +198,29 @@ function buildArgs(tool: ToolDef, values: Record<string, string>): Record<string
     }
 
     if (field.type === 'boolean') {
-      args[field.name] = raw === 'true';
+      const boolVal = raw === 'true';
+      args[apiKey] = field.invertBoolean ? !boolVal : boolVal;
     } else if (field.type === 'number') {
-      args[field.name] = Number(raw);
+      args[apiKey] = Number(raw);
     } else {
-      args[field.name] = raw;
+      args[apiKey] = raw;
     }
   }
   return args;
+}
+
+function isCategoryUnlocked(
+  requiresLogin: 'chatbot' | 'business' | undefined,
+  session: PersistedSession,
+): boolean {
+  if (!requiresLogin) return true;
+  return requiresLogin === 'chatbot' ? session.chatbotLoggedIn : session.businessLoggedIn;
+}
+
+function loginRequiredMessage(requiresLogin: 'chatbot' | 'business'): string {
+  return requiresLogin === 'business'
+    ? 'Log in with QR → choose "business" first. Channel tools need business.kakao.com access.'
+    : 'Log in with QR → choose "chatbot" first. Bot tools need chatbot.kakao.com access.';
 }
 
 type HistoryEntry = {
@@ -189,7 +236,8 @@ type HistoryEntry = {
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function KakaoPlayground() {
-  const [selectedTool, setSelectedTool] = useState<ToolDef>(TOOLS[0]);
+  const [session, setSession] = useState<PersistedSession>(defaultSession);
+  const [selectedTool, setSelectedTool] = useState<ToolDef>(VISIBLE_TOOLS[0]);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -198,18 +246,44 @@ export default function KakaoPlayground() {
   const [dbHref, setDbHref] = useState('/database');
   const nextId = useRef(1);
 
-  // Login polling state
   const [loginPolling, setLoginPolling] = useState(false);
-  const [loginId, setLoginId] = useState<string | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
-  const [loginStatus, setLoginStatus] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const updateSession = useCallback((patch: Partial<PersistedSession>) => {
+    setSession(prev => {
+      const next = { ...prev, ...patch };
+      saveSession(next);
+      return next;
+    });
+  }, []);
+
+  const markLoggedIn = useCallback((service: 'chatbot' | 'business') => {
+    updateSession({
+      ...(service === 'chatbot' ? { chatbotLoggedIn: true } : { businessLoggedIn: true }),
+      loginStatus: 'logged_in',
+    });
+  }, [updateSession]);
+
+  useEffect(() => {
+    setSession(loadSession());
+  }, []);
 
   useEffect(() => {
     const bp = getEgdeskBasePath();
     setLandingHref(bp || '/');
     setDbHref(`${bp}/database`);
   }, []);
+
+  // Pre-fill create-bot channel from selected channel
+  useEffect(() => {
+    if (selectedTool.name === 'kakao_create_bot' && session.selectedChannel?.searchId) {
+      setFieldValues(prev => ({
+        ...prev,
+        channelSearchId: session.selectedChannel!.searchId,
+      }));
+    }
+  }, [selectedTool, session.selectedChannel]);
 
   // Initialize default field values when tool changes
   useEffect(() => {
@@ -219,10 +293,12 @@ export default function KakaoPlayground() {
         defaults[field.name] = String(field.defaultValue);
       }
     }
+    if (selectedTool.name === 'kakao_create_bot' && session.selectedChannel?.searchId) {
+      defaults.channelSearchId = session.selectedChannel.searchId;
+    }
     setFieldValues(defaults);
-  }, [selectedTool]);
+  }, [selectedTool, session.selectedChannel]);
 
-  // Cleanup polling on unmount
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -246,106 +322,175 @@ export default function KakaoPlayground() {
     return res.json();
   };
 
-  const startPolling = useCallback((id: string, profileName: string) => {
+  const recordResult = useCallback((
+    tool: string,
+    args: Record<string, any>,
+    parsed: any,
+    durationMs: number,
+    error?: string,
+  ) => {
+    const entry: HistoryEntry = {
+      id: nextId.current++,
+      tool,
+      args,
+      result: parsed,
+      error,
+      timestamp: Date.now(),
+      durationMs,
+    };
+    setHistory(prev => [entry, ...prev]);
+    setExpandedEntry(entry.id);
+    return entry;
+  }, []);
+
+  const applyResultSideEffects = useCallback((tool: string, parsed: any) => {
+    if (Array.isArray(parsed?.channels)) {
+      updateSession({ cachedChannels: parsed.channels });
+    }
+    if (Array.isArray(parsed?.bots)) {
+      updateSession({ cachedBots: parsed.bots });
+    }
+    if (tool === 'kakao_list_resources') {
+      updateSession({
+        cachedChannels: parsed.channels || [],
+        cachedBots: parsed.bots || [],
+      });
+    }
+  }, [updateSession]);
+
+  const startPolling = useCallback((
+    id: string,
+    profileName: string,
+    service: 'chatbot' | 'business',
+  ) => {
     setLoginPolling(true);
-    setLoginId(id);
+    updateSession({ loginId: id, loginService: service, loginStatus: 'waiting_for_qr' });
 
     pollRef.current = setInterval(async () => {
       try {
         const result = await callTool('kakao_login_status', { profileName, loginId: id });
         const parsed = parseMcpResult(result);
         if (parsed.qrImageDataUrl) setQrImage(parsed.qrImageDataUrl);
-        setLoginStatus(parsed.status || null);
+        updateSession({ loginStatus: parsed.status || null });
 
-        if (parsed.status === 'logged_in' || parsed.status === 'expired' || parsed.status === 'failed' || parsed.status === 'closed') {
+        if (parsed.status === 'logged_in') {
           stopPolling();
-          // Add a status poll entry to history
-          setHistory(prev => [{
-            id: nextId.current++,
-            tool: 'kakao_login_status',
-            args: { profileName, loginId: id },
-            result: parsed,
-            timestamp: Date.now(),
-            durationMs: 0,
-          }, ...prev]);
+          markLoggedIn(service);
+          setQrImage(null);
+          recordResult('kakao_login_status', { profileName, loginId: id }, parsed, 0);
+        } else if (parsed.status === 'expired' || parsed.status === 'failed' || parsed.status === 'closed') {
+          stopPolling();
+          setQrImage(null);
+          updateSession({ loginId: null, loginService: null });
+          recordResult('kakao_login_status', { profileName, loginId: id }, parsed, 0);
         }
       } catch {
         stopPolling();
       }
     }, 2500);
-  }, [stopPolling]);
+  }, [markLoggedIn, recordResult, stopPolling, updateSession]);
+
+  // Resume polling if page refreshed during active QR login
+  useEffect(() => {
+    if (
+      session.loginId &&
+      session.loginStatus === 'waiting_for_qr' &&
+      !loginPolling &&
+      session.loginService
+    ) {
+      startPolling(session.loginId, session.profileName, session.loginService);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.loginId, session.loginStatus, loginPolling, session.loginService]);
+
+  const runTool = async (toolName: string, args: Record<string, any>) => {
+    const start = Date.now();
+    const raw = await callTool(toolName, args);
+    const parsed = parseMcpResult(raw);
+    recordResult(toolName, args, parsed, Date.now() - start);
+    applyResultSideEffects(toolName, parsed);
+    return parsed;
+  };
 
   const handleRun = async () => {
-    const args = buildArgs(selectedTool, fieldValues);
+    if (selectedTool.requiresLogin && !isCategoryUnlocked(selectedTool.requiresLogin, session)) {
+      return;
+    }
+
+    const args = buildArgs(selectedTool, fieldValues, session.profileName);
     setRunning(true);
 
-    const start = Date.now();
     try {
-      const raw = await callTool(selectedTool.name, args);
-      const parsed = parseMcpResult(raw);
-      const entry: HistoryEntry = {
-        id: nextId.current++,
-        tool: selectedTool.name,
-        args,
-        result: parsed,
-        timestamp: Date.now(),
-        durationMs: Date.now() - start,
-      };
-      setHistory(prev => [entry, ...prev]);
-      setExpandedEntry(entry.id);
+      const parsed = await runTool(selectedTool.name, args);
 
-      // Auto-handle login flow
-      if (selectedTool.name === 'kakao_begin_login' && parsed.loginId) {
-        setLoginId(parsed.loginId);
+      if (selectedTool.name === 'kakao_begin_login') {
+        const service = (args.service as 'chatbot' | 'business') || 'chatbot';
+        updateSession({
+          loginId: parsed.loginId || null,
+          loginService: service,
+          loginStatus: parsed.status || null,
+        });
+
         if (parsed.qrImageDataUrl) setQrImage(parsed.qrImageDataUrl);
-        setLoginStatus(parsed.status || null);
 
-        if (parsed.status === 'waiting_for_qr') {
-          startPolling(parsed.loginId, args.profileName || 'Default');
+        if (parsed.status === 'logged_in') {
+          markLoggedIn(service);
+        } else if (parsed.loginId && parsed.status === 'waiting_for_qr') {
+          startPolling(parsed.loginId, session.profileName, service);
         }
-
-        // Auto-fill loginId on login_status and close_login tools
-        // (user can switch to those tools and the loginId will be pre-filled)
       }
     } catch (err: any) {
-      const entry: HistoryEntry = {
-        id: nextId.current++,
-        tool: selectedTool.name,
-        args,
-        result: null,
-        error: err.message || String(err),
-        timestamp: Date.now(),
-        durationMs: Date.now() - start,
-      };
-      setHistory(prev => [entry, ...prev]);
-      setExpandedEntry(entry.id);
+      recordResult(selectedTool.name, args, null, 0, err.message || String(err));
     } finally {
       setRunning(false);
     }
   };
 
   const handleCloseLogin = async () => {
-    if (!loginId) return;
+    if (!session.loginId) return;
     stopPolling();
     try {
       await callTool('kakao_close_login', {
-        profileName: fieldValues.profileName || 'Default',
-        loginId,
+        profileName: session.profileName,
+        loginId: session.loginId,
       });
     } catch { /* best effort */ }
     setQrImage(null);
-    setLoginId(null);
-    setLoginStatus(null);
+    updateSession({ loginId: null, loginStatus: null, loginService: null });
+  };
+
+  const handleSelectChannel = async (channel: { searchId: string; name?: string }) => {
+    setRunning(true);
+    const args = {
+      profileName: session.profileName,
+      channel: { searchId: channel.searchId, name: channel.name },
+    };
+    try {
+      const parsed = await runTool('kakao_select_channel', args);
+      if (parsed.success !== false) {
+        updateSession({
+          selectedChannel: { searchId: channel.searchId, name: channel.name || channel.searchId },
+        });
+      }
+    } catch (err: any) {
+      recordResult('kakao_select_channel', args, null, 0, err.message || String(err));
+    } finally {
+      setRunning(false);
+    }
   };
 
   const setField = (name: string, value: string) => {
     setFieldValues(prev => ({ ...prev, [name]: value }));
   };
 
-  const selectToolByName = (name: string) => {
-    const tool = TOOLS.find(t => t.name === name);
-    if (tool) setSelectedTool(tool);
+  const selectTool = (tool: ToolDef) => {
+    if (tool.requiresLogin && !isCategoryUnlocked(tool.requiresLogin, session)) return;
+    setSelectedTool(tool);
   };
+
+  const toolLocked = selectedTool.requiresLogin
+    ? !isCategoryUnlocked(selectedTool.requiresLogin, session)
+    : false;
 
   return (
     <main style={pageStyle}>
@@ -358,34 +503,74 @@ export default function KakaoPlayground() {
         <div style={eyebrowStyle}>EGDesk Kakao MCP</div>
         <h1 style={titleStyle}>Kakao Playground</h1>
         <p style={subtitleStyle}>
-          Call Kakao MCP tools, see QR codes, inspect results. EGDesk must be running with the Kakao MCP server enabled.
+          Log in with QR, then manage channels and bots. EGDesk must be running locally with the Kakao MCP server enabled.
         </p>
       </header>
+
+      {/* Session status */}
+      <div style={sessionBarStyle}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <label style={labelStyle}>Chrome profile name</label>
+          <input
+            type="text"
+            value={session.profileName}
+            onChange={e => updateSession({ profileName: e.target.value })}
+            placeholder="Default"
+            style={inputStyle}
+          />
+          <p style={hintStyle}>Persistent browser profile in EGDesk — sessions are remembered per profile.</p>
+        </div>
+        <div style={sessionPillsStyle}>
+          <SessionPill label="Chatbot" ok={session.chatbotLoggedIn} site="chatbot.kakao.com" />
+          <SessionPill label="Business" ok={session.businessLoggedIn} site="business.kakao.com" />
+          {session.selectedChannel && (
+            <span style={selectedChannelPillStyle}>
+              Channel: <code style={inlineCodeStyle}>{session.selectedChannel.searchId}</code>
+            </span>
+          )}
+        </div>
+      </div>
 
       <div style={layoutStyle}>
         {/* Left: Tool picker + form */}
         <div style={leftColStyle}>
-          {/* Tool tabs by category */}
           <div style={panelStyle}>
-            {CATEGORIES.map(cat => (
-              <div key={cat.key} style={{ marginBottom: 16 }}>
-                <div style={categoryLabelStyle}>{cat.label}</div>
-                <div style={toolTabGridStyle}>
-                  {TOOLS.filter(t => t.category === cat.key).map(tool => (
-                    <button
-                      key={tool.name}
-                      onClick={() => setSelectedTool(tool)}
-                      style={{
-                        ...toolTabStyle,
-                        ...(selectedTool.name === tool.name ? toolTabActiveStyle : {}),
-                      }}
-                    >
-                      {tool.title}
-                    </button>
-                  ))}
+            {CATEGORIES.map(cat => {
+              const catLocked = 'requiresLogin' in cat && cat.requiresLogin
+                ? !isCategoryUnlocked(cat.requiresLogin, session)
+                : false;
+              return (
+                <div key={cat.key} style={{ marginBottom: 16 }}>
+                  <div style={categoryLabelStyle}>{cat.label}</div>
+                  {catLocked && (
+                    <p style={{ ...hintStyle, color: '#b45309', marginBottom: 8 }}>
+                      {loginRequiredMessage(cat.requiresLogin!)}
+                    </p>
+                  )}
+                  <div style={toolTabGridStyle}>
+                    {VISIBLE_TOOLS.filter(t => t.category === cat.key).map(tool => {
+                      const locked = tool.requiresLogin
+                        ? !isCategoryUnlocked(tool.requiresLogin, session)
+                        : false;
+                      return (
+                        <button
+                          key={tool.name}
+                          onClick={() => selectTool(tool)}
+                          disabled={locked}
+                          style={{
+                            ...toolTabStyle,
+                            ...(selectedTool.name === tool.name ? toolTabActiveStyle : {}),
+                            ...(locked ? toolTabLockedStyle : {}),
+                          }}
+                        >
+                          {tool.title}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Selected tool form */}
@@ -394,71 +579,84 @@ export default function KakaoPlayground() {
               <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: 0 }}>
                 {selectedTool.title}
               </h2>
-              <code style={toolBadgeStyle}>{selectedTool.name}</code>
             </div>
             <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 16 }}>{selectedTool.description}</p>
 
-            <div style={{ display: 'grid', gap: 12 }}>
-              {selectedTool.fields.map(field => (
-                <div key={field.name}>
-                  <label style={labelStyle}>
-                    {field.label}
-                    {field.required && <span style={{ color: '#dc2626' }}> *</span>}
-                  </label>
-                  {field.type === 'boolean' ? (
-                    <select
-                      value={fieldValues[field.name] ?? String(field.defaultValue ?? 'true')}
-                      onChange={e => setField(field.name, e.target.value)}
-                      style={inputStyle}
-                    >
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  ) : field.type === 'select' ? (
-                    <select
-                      value={fieldValues[field.name] ?? (field.defaultValue as string) ?? ''}
-                      onChange={e => setField(field.name, e.target.value)}
-                      style={inputStyle}
-                    >
-                      {field.options?.map(opt => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type={field.type === 'number' ? 'number' : 'text'}
-                      value={fieldValues[field.name] ?? ''}
-                      onChange={e => setField(field.name, e.target.value)}
-                      placeholder={field.placeholder}
-                      style={inputStyle}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
+            {toolLocked && selectedTool.requiresLogin && (
+              <div style={lockedNoticeStyle}>
+                {loginRequiredMessage(selectedTool.requiresLogin)}
+              </div>
+            )}
 
-            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              <button
-                onClick={handleRun}
-                disabled={running}
-                style={runBtnStyle}
-              >
-                {running ? 'Running...' : 'Run'}
-              </button>
-              {loginId && selectedTool.name.startsWith('kakao_') && (
-                <button onClick={() => {
-                  // Auto-fill loginId for status/close tools
-                  if (selectedTool.name === 'kakao_login_status' || selectedTool.name === 'kakao_close_login') {
-                    setField('loginId', loginId);
-                  } else {
-                    selectToolByName('kakao_login_status');
-                    setTimeout(() => setField('loginId', loginId!), 0);
-                  }
-                }} style={secondaryBtnStyle}>
-                  Fill loginId
-                </button>
-              )}
-            </div>
+            {!toolLocked && (
+              <>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {selectedTool.fields.map(field => (
+                    <div key={field.name}>
+                      <label style={labelStyle}>
+                        {field.label}
+                        {field.required && <span style={{ color: '#dc2626' }}> *</span>}
+                      </label>
+                      {field.type === 'boolean' ? (
+                        <select
+                          value={fieldValues[field.name] ?? String(field.defaultValue ?? 'true')}
+                          onChange={e => setField(field.name, e.target.value)}
+                          style={inputStyle}
+                        >
+                          <option value="true">Yes</option>
+                          <option value="false">No</option>
+                        </select>
+                      ) : field.type === 'select' ? (
+                        <select
+                          value={fieldValues[field.name] ?? (field.defaultValue as string) ?? ''}
+                          onChange={e => setField(field.name, e.target.value)}
+                          style={inputStyle}
+                        >
+                          {field.name === 'service' ? (
+                            <>
+                              <option value="chatbot">Chatbot Admin (chatbot.kakao.com)</option>
+                              <option value="business">Business Channels (business.kakao.com)</option>
+                            </>
+                          ) : (
+                            field.options?.map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))
+                          )}
+                        </select>
+                      ) : (
+                        <input
+                          type={field.type === 'number' ? 'number' : 'text'}
+                          value={fieldValues[field.name] ?? ''}
+                          onChange={e => setField(field.name, e.target.value)}
+                          placeholder={field.placeholder}
+                          style={inputStyle}
+                        />
+                      )}
+                      {field.name === 'service' && (
+                        <p style={hintStyle}>
+                          {SERVICE_HINTS[fieldValues.service || 'chatbot']}
+                        </p>
+                      )}
+                      {field.name === 'channelSearchId' && session.selectedChannel && (
+                        <p style={hintStyle}>
+                          Pre-filled from selected channel. List channels first, then pick one in Display.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+                  <button
+                    onClick={handleRun}
+                    disabled={running}
+                    style={runBtnStyle}
+                  >
+                    {running ? 'Running...' : selectedTool.name === 'kakao_begin_login' ? 'Show QR code' : 'Run'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
           {/* QR code panel (login flow) */}
@@ -466,10 +664,10 @@ export default function KakaoPlayground() {
             <div style={qrPanelStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: '#111827' }}>
-                  Kakao QR Login
+                  Scan QR code
                 </h3>
                 <button onClick={handleCloseLogin} style={closeBtnStyle}>
-                  Close session
+                  Cancel
                 </button>
               </div>
 
@@ -482,7 +680,7 @@ export default function KakaoPlayground() {
                     style={{ width: 200, height: 200, borderRadius: 8, border: '1px solid #e5e7eb' }}
                   />
                   <p style={{ color: '#6b7280', fontSize: 13, marginTop: 10 }}>
-                    Scan with KakaoTalk to log in
+                    Open KakaoTalk → More → QR code scanner
                   </p>
                 </div>
               ) : (
@@ -494,13 +692,17 @@ export default function KakaoPlayground() {
               <div style={statusBadgeContainerStyle}>
                 <span style={{
                   ...statusBadgeStyle,
-                  background: loginStatus === 'logged_in' ? '#dcfce7' : loginStatus === 'failed' || loginStatus === 'expired' ? '#fef2f2' : '#fef3c7',
-                  color: loginStatus === 'logged_in' ? '#166534' : loginStatus === 'failed' || loginStatus === 'expired' ? '#991b1b' : '#92400e',
+                  background: session.loginStatus === 'logged_in' ? '#dcfce7' : session.loginStatus === 'failed' || session.loginStatus === 'expired' ? '#fef2f2' : '#fef3c7',
+                  color: session.loginStatus === 'logged_in' ? '#166534' : session.loginStatus === 'failed' || session.loginStatus === 'expired' ? '#991b1b' : '#92400e',
                 }}>
-                  {loginStatus || 'starting'}
+                  {session.loginStatus || 'starting'}
                 </span>
-                {loginPolling && <span style={{ color: '#9ca3af', fontSize: 12 }}>polling every 2.5s</span>}
-                {loginId && <code style={{ fontSize: 11, color: '#6b7280' }}>{loginId}</code>}
+                {loginPolling && <span style={{ color: '#9ca3af', fontSize: 12 }}>checking every 2.5s</span>}
+                {session.loginService && (
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>
+                    {session.loginService === 'business' ? 'business.kakao.com' : 'chatbot.kakao.com'}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -539,20 +741,8 @@ export default function KakaoPlayground() {
                   <DisplayResultView
                     data={displayEntry.result}
                     tool={displayEntry.tool}
-                    onPollStatus={displayEntry.result?.loginId ? () => {
-                      selectToolByName('kakao_login_status');
-                      setTimeout(() => {
-                        setField('loginId', displayEntry.result.loginId);
-                        setField('profileName', displayEntry.args.profileName || 'Default');
-                      }, 0);
-                    } : undefined}
-                    onCloseLogin={displayEntry.result?.loginId ? () => {
-                      selectToolByName('kakao_close_login');
-                      setTimeout(() => {
-                        setField('loginId', displayEntry.result.loginId);
-                        setField('profileName', displayEntry.args.profileName || 'Default');
-                      }, 0);
-                    } : undefined}
+                    selectedChannelSearchId={session.selectedChannel?.searchId}
+                    onSelectChannel={handleSelectChannel}
                   />
                 </div>
               );
@@ -614,11 +804,11 @@ export default function KakaoPlayground() {
                         <div style={miniLabelStyle}>{entry.error ? 'Error' : 'Response'}</div>
                         <pre style={{
                           ...resultCodeStyle,
-                          ...(entry.error ? { background: '#fef2f2', color: '#991b1b', borderColor: '#fecaca' } : {}),
+                          ...(entry.error ? { background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' } : {}),
                         }}>
                           {entry.error
                             ? entry.error
-                            : JSON.stringify(entry.result, stripQrImages, 2)}
+                            : JSON.stringify(entry.result, stripInternalFields, 2)}
                         </pre>
                       </div>
                     </div>
@@ -654,11 +844,12 @@ function parseMcpResult(raw: any): any {
   return mcpPayload;
 }
 
-/** JSON.stringify replacer: truncate qrImageDataUrl in displayed output */
-function stripQrImages(key: string, value: any): any {
+/** JSON.stringify replacer: hide bulky / internal fields in raw output */
+function stripInternalFields(key: string, value: any): any {
   if (key === 'qrImageDataUrl' && typeof value === 'string' && value.length > 80) {
-    return value.slice(0, 40) + '...[QR image truncated]';
+    return value.slice(0, 40) + '...[QR truncated]';
   }
+  if (key === 'loginId') return '[managed automatically]';
   return value;
 }
 
@@ -667,11 +858,11 @@ function stripQrImages(key: string, value: any): any {
 type DisplayResultViewProps = {
   data: any;
   tool: string;
-  onPollStatus?: () => void;
-  onCloseLogin?: () => void;
+  selectedChannelSearchId?: string;
+  onSelectChannel?: (channel: { searchId: string; name?: string }) => void;
 };
 
-function DisplayResultView({ data, tool, onPollStatus, onCloseLogin }: DisplayResultViewProps) {
+function DisplayResultView({ data, tool, selectedChannelSearchId, onSelectChannel }: DisplayResultViewProps) {
   if (!data || typeof data !== 'object') {
     return <p style={{ color: '#6b7280', fontSize: 14, margin: 0 }}>{String(data)}</p>;
   }
@@ -681,14 +872,14 @@ function DisplayResultView({ data, tool, onPollStatus, onCloseLogin }: DisplayRe
   }
 
   const hasQr = typeof data.qrImageDataUrl === 'string' && data.qrImageDataUrl.startsWith('data:');
-  const hasLoginFields = data.loginId || data.status;
+  const hasLoginFields = data.status && tool.includes('login');
   const channels = Array.isArray(data.channels) ? data.channels : null;
   const bots = Array.isArray(data.bots) ? data.bots : null;
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       {/* QR login */}
-      {(hasQr || (hasLoginFields && tool.includes('login'))) && (
+      {(hasQr || hasLoginFields) && (
         <div>
           {hasQr && (
             <div style={{ textAlign: 'center', marginBottom: 12 }}>
@@ -699,7 +890,7 @@ function DisplayResultView({ data, tool, onPollStatus, onCloseLogin }: DisplayRe
                 style={{ width: 220, height: 220, borderRadius: 10, border: '1px solid #e5e7eb' }}
               />
               <p style={{ color: '#6b7280', fontSize: 13, marginTop: 10 }}>
-                Scan with KakaoTalk to log in
+                Scan with KakaoTalk — status updates automatically
               </p>
             </div>
           )}
@@ -724,25 +915,24 @@ function DisplayResultView({ data, tool, onPollStatus, onCloseLogin }: DisplayRe
               </>
             )}
             {data.message && <><dt style={kvTermStyle}>Message</dt><dd style={kvDescStyle}>{data.message}</dd></>}
-            {data.loginId && <><dt style={kvTermStyle}>Login ID</dt><dd style={kvDescStyle}><code style={inlineCodeStyle}>{data.loginId}</code></dd></>}
-            {data.service && <><dt style={kvTermStyle}>Service</dt><dd style={kvDescStyle}>{data.service}</dd></>}
+            {data.service && (
+              <>
+                <dt style={kvTermStyle}>Site</dt>
+                <dd style={kvDescStyle}>
+                  {data.service === 'business' ? 'business.kakao.com' : 'chatbot.kakao.com'}
+                </dd>
+              </>
+            )}
             {data.profileName && <><dt style={kvTermStyle}>Profile</dt><dd style={kvDescStyle}>{data.profileName}</dd></>}
-            {data.expiresAt && <><dt style={kvTermStyle}>Expires</dt><dd style={kvDescStyle}>{formatTimestamp(data.expiresAt)}</dd></>}
+            {data.expiresAt && <><dt style={kvTermStyle}>QR expires</dt><dd style={kvDescStyle}>{formatTimestamp(data.expiresAt)}</dd></>}
           </dl>
-
-          {data.loginId && (onPollStatus || onCloseLogin) && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              {onPollStatus && <button onClick={onPollStatus} style={secondaryBtnStyle}>Poll status</button>}
-              {onCloseLogin && <button onClick={onCloseLogin} style={secondaryBtnStyle}>Close login</button>}
-            </div>
-          )}
         </div>
       )}
 
       {/* Channels table */}
       {channels && channels.length > 0 && (
         <div>
-          <div style={miniLabelStyle}>Channels ({channels.length})</div>
+          <div style={miniLabelStyle}>Channels ({channels.length}) — click Select to use for bot setup</div>
           <div style={tableWrapStyle}>
             <table style={tableStyle}>
               <thead>
@@ -751,21 +941,44 @@ function DisplayResultView({ data, tool, onPollStatus, onCloseLogin }: DisplayRe
                   <th style={thStyle}>Search ID</th>
                   <th style={thStyle}>Status</th>
                   <th style={thStyle}>Bot</th>
+                  {onSelectChannel && <th style={thStyle} />}
                 </tr>
               </thead>
               <tbody>
-                {channels.map((ch: any, i: number) => (
-                  <tr key={ch.id || ch.searchId || i}>
-                    <td style={tdStyle}>{ch.name || '—'}</td>
-                    <td style={tdStyle}><code style={inlineCodeStyle}>{ch.searchId || '—'}</code></td>
-                    <td style={tdStyle}>{ch.status || '—'}</td>
-                    <td style={tdStyle}>{ch.connectedBotName || '—'}</td>
-                  </tr>
-                ))}
+                {channels.map((ch: any, i: number) => {
+                  const isSelected = selectedChannelSearchId === ch.searchId;
+                  return (
+                    <tr key={ch.id || ch.searchId || i} style={isSelected ? { background: '#ecfdf5' } : undefined}>
+                      <td style={tdStyle}>{ch.name || '—'}</td>
+                      <td style={tdStyle}><code style={inlineCodeStyle}>{ch.searchId || '—'}</code></td>
+                      <td style={tdStyle}>{ch.status || '—'}</td>
+                      <td style={tdStyle}>{ch.connectedBotName || '—'}</td>
+                      {onSelectChannel && ch.searchId && (
+                        <td style={tdStyle}>
+                          <button
+                            onClick={() => onSelectChannel({ searchId: ch.searchId, name: ch.name })}
+                            style={{
+                              ...secondaryBtnStyle,
+                              fontSize: 12,
+                              padding: '3px 8px',
+                              ...(isSelected ? { background: '#047857', color: '#fff', border: '1px solid #047857' } : {}),
+                            }}
+                          >
+                            {isSelected ? 'Selected' : 'Select'}
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
+      )}
+
+      {channels && channels.length === 0 && (
+        <p style={{ color: '#6b7280', fontSize: 14, margin: 0 }}>No channels found for this profile.</p>
       )}
 
       {/* Bots table */}
@@ -813,7 +1026,7 @@ function DisplayResultView({ data, tool, onPollStatus, onCloseLogin }: DisplayRe
 }
 
 function KeyValueFallback({ data }: { data: Record<string, any> }) {
-  const skip = new Set(['qrImageDataUrl', 'success']);
+  const skip = new Set(['qrImageDataUrl', 'success', 'loginId']);
   const entries = Object.entries(data).filter(([k, v]) => !skip.has(k) && v != null && typeof v !== 'object');
 
   if (entries.length === 0) {
@@ -838,6 +1051,25 @@ function formatTimestamp(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function SessionPill({ label, ok, site }: { label: string; ok: boolean; site: string }) {
+  return (
+    <span style={{
+      ...statusBadgeStyle,
+      background: ok ? '#dcfce7' : '#f3f4f6',
+      color: ok ? '#166534' : '#6b7280',
+      display: 'inline-flex',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      gap: 2,
+      borderRadius: 8,
+      padding: '6px 10px',
+    }}>
+      <span>{ok ? `${label} ✓` : `${label} — not logged in`}</span>
+      <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.85 }}>{site}</span>
+    </span>
+  );
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
@@ -927,7 +1159,58 @@ const toolTabStyle: React.CSSProperties = {
 const toolTabActiveStyle: React.CSSProperties = {
   background: '#047857',
   color: '#fff',
-  borderColor: '#047857',
+  border: '1px solid #047857',
+};
+
+const toolTabLockedStyle: React.CSSProperties = {
+  opacity: 0.45,
+  cursor: 'not-allowed',
+};
+
+const hintStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#9ca3af',
+  margin: '4px 0 0',
+  lineHeight: 1.5,
+};
+
+const sessionBarStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 16,
+  alignItems: 'flex-start',
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 10,
+  padding: 16,
+  marginBottom: 20,
+};
+
+const sessionPillsStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 8,
+  alignItems: 'center',
+};
+
+const selectedChannelPillStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#065f46',
+  background: '#ecfdf5',
+  border: '1px solid #a7f3d0',
+  borderRadius: 8,
+  padding: '6px 10px',
+};
+
+const lockedNoticeStyle: React.CSSProperties = {
+  background: '#fffbeb',
+  border: '1px solid #fde68a',
+  borderRadius: 8,
+  padding: 12,
+  fontSize: 13,
+  color: '#92400e',
+  lineHeight: 1.5,
 };
 
 const toolBadgeStyle: React.CSSProperties = {
