@@ -223,6 +223,7 @@ export default function DatabasePlayground() {
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
   const [landingHref, setLandingHref] = useState('/');
   const [kakaoHref, setKakaoHref] = useState('/kakao-mcp');
+  const [inventoryHref, setInventoryHref] = useState('/inventory-mcp');
   const nextId = useRef(1);
 
   const loadMeta = useCallback(async () => {
@@ -242,6 +243,7 @@ export default function DatabasePlayground() {
     const bp = getEgdeskBasePath();
     setLandingHref(bp || '/');
     setKakaoHref(`${bp}/kakao-mcp`);
+    setInventoryHref(`${bp}/inventory-mcp`);
     loadMeta();
   }, [loadMeta]);
 
@@ -397,6 +399,7 @@ export default function DatabasePlayground() {
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
           <a href={landingHref} style={navLinkStyle}>Back to landing</a>
           <a href={kakaoHref} style={navLinkStyle}>Kakao MCP guide</a>
+          <a href={inventoryHref} style={navLinkStyle}>Inventory MCP</a>
         </div>
         <div style={eyebrowStyle}>EGDesk Database</div>
         <h1 style={titleStyle}>Query Playground</h1>

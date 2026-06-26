@@ -109,7 +109,7 @@ const TOOLS: ToolDef[] = [
   {
     name: 'kakao_list_channels',
     title: 'List my channels',
-    description: 'Fetch Kakao Business channels. Prompts for QR only if not already logged in.',
+    description: 'Opens headless Chrome and scrapes business.kakao.com. Log in with QR first — this tool cannot show QR itself.',
     category: 'channels',
     fields: [
       { name: 'enrichDetails', label: 'Include extra details', type: 'boolean', defaultValue: true },
@@ -129,7 +129,7 @@ const TOOLS: ToolDef[] = [
   {
     name: 'kakao_list_bots',
     title: 'List my bots',
-    description: 'Fetch chatbot admin bots. Prompts for QR only if not already logged in.',
+    description: 'Opens headless Chrome and scrapes chatbot.kakao.com. Log in with QR first.',
     category: 'bots',
     fields: [],
   },
@@ -171,6 +171,28 @@ const TOOLS: ToolDef[] = [
 ];
 
 const VISIBLE_TOOLS = TOOLS.filter(t => !t.internal);
+
+/** Tools that launch headless Chrome — require prior kakao_begin_login in this playground */
+const HEADLESS_BROWSER_TOOLS = new Set([
+  'kakao_list_channels',
+  'kakao_list_bots',
+  'kakao_list_resources',
+  'kakao_create_channel',
+  'kakao_create_bot',
+  'kakao_check_callback_statuses',
+  'kakao_repair_callback_setup',
+]);
+
+const RUNNING_HINTS: Record<string, string> = {
+  kakao_begin_login: 'Opening Chrome and loading Kakao login page…',
+  kakao_list_channels: 'Headless Chrome → business.kakao.com → scraping channel list. With extra details on, this can take a few minutes.',
+  kakao_list_bots: 'Headless Chrome → chatbot.kakao.com → scraping bot list…',
+  kakao_create_channel: 'Headless Chrome → creating channel on business.kakao.com…',
+  kakao_create_bot: 'Headless Chrome → creating bot on chatbot.kakao.com (can take several minutes)…',
+  kakao_list_resources: 'Headless Chrome → listing channels and bots…',
+  kakao_check_callback_statuses: 'Checking webhook configuration…',
+  kakao_repair_callback_setup: 'Repairing webhook setup and redeploying…',
+};
 
 const CATEGORIES = [
   { key: 'login', label: 'Login' },
@@ -230,11 +252,15 @@ export default function KakaoPlayground() {
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
   const [landingHref, setLandingHref] = useState('/');
   const [dbHref, setDbHref] = useState('/database');
+  const [inventoryHref, setInventoryHref] = useState('/inventory-mcp');
   const nextId = useRef(1);
 
   const [loginPolling, setLoginPolling] = useState(false);
   const [qrImage, setQrImage] = useState<string | null>(null);
+  const [runningHint, setRunningHint] = useState<string | null>(null);
+  const [runningElapsedSec, setRunningElapsedSec] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const runningTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const updateSession = useCallback((patch: Partial<PersistedSession>) => {
     setSession(prev => {
@@ -256,6 +282,7 @@ export default function KakaoPlayground() {
     const bp = getEgdeskBasePath();
     setLandingHref(bp || '/');
     setDbHref(`${bp}/database`);
+    setInventoryHref(`${bp}/inventory-mcp`);
   }, []);
 
   // Pre-fill create-bot channel from selected channel
@@ -285,7 +312,26 @@ export default function KakaoPlayground() {
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (runningTimerRef.current) clearInterval(runningTimerRef.current);
     };
+  }, []);
+
+  const startRunningTimer = useCallback((toolName: string) => {
+    setRunningHint(RUNNING_HINTS[toolName] || 'Waiting for EGDesk…');
+    setRunningElapsedSec(0);
+    if (runningTimerRef.current) clearInterval(runningTimerRef.current);
+    runningTimerRef.current = setInterval(() => {
+      setRunningElapsedSec(s => s + 1);
+    }, 1000);
+  }, []);
+
+  const stopRunningTimer = useCallback(() => {
+    if (runningTimerRef.current) {
+      clearInterval(runningTimerRef.current);
+      runningTimerRef.current = null;
+    }
+    setRunningHint(null);
+    setRunningElapsedSec(0);
   }, []);
 
   const stopPolling = useCallback(() => {
@@ -361,6 +407,8 @@ export default function KakaoPlayground() {
           markLoggedIn();
           setQrImage(null);
           recordResult('kakao_login_status', { profileName, loginId: id }, parsed, 0);
+          await callTool('kakao_close_login', { profileName, loginId: id }).catch(() => {});
+          updateSession({ loginId: null, loginService: null, loginStatus: 'logged_in' });
         } else if (parsed.status === 'expired' || parsed.status === 'failed' || parsed.status === 'closed') {
           stopPolling();
           setQrImage(null);
@@ -397,9 +445,26 @@ export default function KakaoPlayground() {
 
   const handleRun = async () => {
     const args = buildArgs(selectedTool, fieldValues, session.profileName);
+
+    if (HEADLESS_BROWSER_TOOLS.has(selectedTool.name) && !session.kakaoLoggedIn) {
+      recordResult(
+        selectedTool.name,
+        args,
+        null,
+        0,
+        'Log in with QR first (Login tab → Show QR code). Headless list/create tools cannot display QR — EGDesk would wait silently otherwise.',
+      );
+      return;
+    }
+
     setRunning(true);
+    startRunningTimer(selectedTool.name);
 
     try {
+      if (HEADLESS_BROWSER_TOOLS.has(selectedTool.name)) {
+        await releaseLoginBrowser();
+      }
+
       const parsed = await runTool(selectedTool.name, args);
 
       if (selectedTool.name === 'kakao_begin_login') {
@@ -414,6 +479,7 @@ export default function KakaoPlayground() {
 
         if (parsed.status === 'logged_in') {
           markLoggedIn();
+          await releaseLoginBrowser();
         } else if (parsed.loginId && parsed.status === 'waiting_for_qr') {
           startPolling(parsed.loginId, session.profileName, service);
         }
@@ -425,6 +491,7 @@ export default function KakaoPlayground() {
       recordResult(selectedTool.name, args, null, 0, err.message || String(err));
     } finally {
       setRunning(false);
+      stopRunningTimer();
     }
   };
 
@@ -440,6 +507,20 @@ export default function KakaoPlayground() {
     setQrImage(null);
     updateSession({ loginId: null, loginStatus: null, loginService: null });
   };
+
+  /** Close QR login browser so headless tools can reuse the Chrome profile. */
+  const releaseLoginBrowser = useCallback(async () => {
+    if (!session.loginId) return;
+    stopPolling();
+    try {
+      await callTool('kakao_close_login', {
+        profileName: session.profileName,
+        loginId: session.loginId,
+      });
+    } catch { /* best effort */ }
+    setQrImage(null);
+    updateSession({ loginId: null, loginStatus: null, loginService: null });
+  }, [session.loginId, session.profileName, stopPolling, updateSession]);
 
   const handleSelectChannel = async (channel: { searchId: string; name?: string }) => {
     setRunning(true);
@@ -476,6 +557,7 @@ export default function KakaoPlayground() {
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
           <a href={landingHref} style={navLinkStyle}>Back to landing</a>
           <a href={dbHref} style={navLinkStyle}>Database demo</a>
+          <a href={inventoryHref} style={navLinkStyle}>Inventory MCP</a>
         </div>
         <div style={eyebrowStyle}>EGDesk Kakao MCP</div>
         <h1 style={titleStyle}>Kakao Playground</h1>
@@ -605,15 +687,22 @@ export default function KakaoPlayground() {
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap', alignItems: 'center' }}>
               <button
                 onClick={handleRun}
                 disabled={running}
                 style={runBtnStyle}
               >
-                {running ? 'Running...' : selectedTool.name === 'kakao_begin_login' ? 'Show QR code' : 'Run'}
+                {running ? `Running… ${runningElapsedSec}s` : selectedTool.name === 'kakao_begin_login' ? 'Show QR code' : 'Run'}
               </button>
             </div>
+
+            {running && runningHint && (
+              <div style={runningHintStyle}>
+                <strong style={{ display: 'block', marginBottom: 4 }}>In progress ({runningElapsedSec}s)</strong>
+                {runningHint}
+              </div>
+            )}
           </div>
 
           {/* QR code panel (login flow) */}
@@ -1135,6 +1224,17 @@ const selectedChannelPillStyle: React.CSSProperties = {
   border: '1px solid #a7f3d0',
   borderRadius: 8,
   padding: '6px 10px',
+};
+
+const runningHintStyle: React.CSSProperties = {
+  marginTop: 14,
+  background: '#eff6ff',
+  border: '1px solid #bfdbfe',
+  borderRadius: 8,
+  padding: 12,
+  fontSize: 13,
+  color: '#1e40af',
+  lineHeight: 1.5,
 };
 
 const toolBadgeStyle: React.CSSProperties = {

@@ -21,6 +21,13 @@ const pages: DemoPage[] = [
     items: ['queryTable', 'insertRows', 'updateRows', 'searchTable'],
   },
   {
+    title: 'Inventory MCP',
+    description: 'Install the camera-based inventory scanner into Next.js or Vite projects via inventory_setup_scanner.',
+    href: '/inventory-mcp',
+    eyebrow: 'Inventory scanner',
+    items: ['inventory_setup_scanner', 'YOLO', 'DINO'],
+  },
+  {
     title: 'Kakao MCP Guide',
     description: 'Review every Kakao Channel MCP tool with helper examples, raw calls, inputs, and setup notes.',
     href: '/kakao-mcp',
@@ -42,8 +49,8 @@ export default function Home() {
         <div style={eyebrowStyle}>EGDesk System Demo</div>
         <h1 style={titleStyle}>Choose a demo page</h1>
         <p style={introStyle}>
-          This workspace shows the generated EGDesk integration surface: database helpers for app data and
-          Kakao MCP helpers for Kakao Channel setup and management.
+          This workspace shows the generated EGDesk integration surface: database helpers, inventory scanner setup,
+          and Kakao MCP helpers for channel and bot management.
         </p>
       </section>
 
