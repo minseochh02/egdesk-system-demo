@@ -506,13 +506,68 @@ export default function KakaoPlayground() {
           )}
         </div>
 
-        {/* Right: Results history */}
+        {/* Right: Display + raw results */}
         <div style={rightColStyle}>
+          {/* Rich display for the selected / latest result */}
+          <div style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 12px' }}>Display</h2>
+            {(() => {
+              const displayEntry = history.find(e => e.id === expandedEntry) ?? history[0];
+              if (!displayEntry) {
+                return (
+                  <div style={emptyResultStyle}>
+                    Run a tool to see QR codes, tables, and summaries here
+                  </div>
+                );
+              }
+              if (displayEntry.error) {
+                return (
+                  <div style={displayPanelStyle}>
+                    <div style={{ ...statusBadgeStyle, background: '#fef2f2', color: '#991b1b', display: 'inline-block' }}>
+                      Error
+                    </div>
+                    <p style={{ color: '#991b1b', fontSize: 14, margin: '10px 0 0' }}>{displayEntry.error}</p>
+                  </div>
+                );
+              }
+              return (
+                <div style={displayPanelStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <code style={toolBadgeStyle}>{displayEntry.tool}</code>
+                    <span style={{ fontSize: 12, color: '#9ca3af' }}>{displayEntry.durationMs}ms</span>
+                  </div>
+                  <DisplayResultView
+                    data={displayEntry.result}
+                    tool={displayEntry.tool}
+                    onPollStatus={displayEntry.result?.loginId ? () => {
+                      selectToolByName('kakao_login_status');
+                      setTimeout(() => {
+                        setField('loginId', displayEntry.result.loginId);
+                        setField('profileName', displayEntry.args.profileName || 'Default');
+                      }, 0);
+                    } : undefined}
+                    onCloseLogin={displayEntry.result?.loginId ? () => {
+                      selectToolByName('kakao_close_login');
+                      setTimeout(() => {
+                        setField('loginId', displayEntry.result.loginId);
+                        setField('profileName', displayEntry.args.profileName || 'Default');
+                      }, 0);
+                    } : undefined}
+                  />
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Raw history */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Results</h2>
             {history.length > 0 && (
               <button
-                onClick={() => setHistory([])}
+                onClick={() => {
+                  setHistory([]);
+                  setExpandedEntry(null);
+                }}
                 style={{ ...secondaryBtnStyle, fontSize: 12, padding: '4px 10px' }}
               >
                 Clear
@@ -521,8 +576,8 @@ export default function KakaoPlayground() {
           </div>
 
           {history.length === 0 ? (
-            <div style={emptyResultStyle}>
-              Run a tool to see results here
+            <div style={{ ...emptyResultStyle, padding: '24px 16px' }}>
+              Raw JSON responses appear here
             </div>
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
@@ -548,7 +603,6 @@ export default function KakaoPlayground() {
 
                   {expandedEntry === entry.id && (
                     <div style={{ padding: '0 12px 12px' }}>
-                      {/* Args */}
                       <div style={{ marginBottom: 8 }}>
                         <div style={miniLabelStyle}>Arguments</div>
                         <pre style={resultCodeStyle}>
@@ -556,7 +610,6 @@ export default function KakaoPlayground() {
                         </pre>
                       </div>
 
-                      {/* Result or error */}
                       <div>
                         <div style={miniLabelStyle}>{entry.error ? 'Error' : 'Response'}</div>
                         <pre style={{
@@ -568,48 +621,6 @@ export default function KakaoPlayground() {
                             : JSON.stringify(entry.result, stripQrImages, 2)}
                         </pre>
                       </div>
-
-                      {/* Inline QR if present */}
-                      {entry.result?.qrImageDataUrl && (
-                        <div style={{ marginTop: 8, textAlign: 'center' }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={entry.result.qrImageDataUrl}
-                            alt="QR"
-                            style={{ width: 140, height: 140, borderRadius: 6, border: '1px solid #e5e7eb' }}
-                          />
-                        </div>
-                      )}
-
-                      {/* Quick actions from result */}
-                      {entry.result?.loginId && entry.tool === 'kakao_begin_login' && (
-                        <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                          <button
-                            onClick={() => {
-                              selectToolByName('kakao_login_status');
-                              setTimeout(() => {
-                                setField('loginId', entry.result.loginId);
-                                setField('profileName', entry.args.profileName || 'Default');
-                              }, 0);
-                            }}
-                            style={secondaryBtnStyle}
-                          >
-                            Poll status
-                          </button>
-                          <button
-                            onClick={() => {
-                              selectToolByName('kakao_close_login');
-                              setTimeout(() => {
-                                setField('loginId', entry.result.loginId);
-                                setField('profileName', entry.args.profileName || 'Default');
-                              }, 0);
-                            }}
-                            style={secondaryBtnStyle}
-                          >
-                            Close login
-                          </button>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -624,16 +635,23 @@ export default function KakaoPlayground() {
 
 // ── Utility ─────────────────────────────────────────────────────────────────
 
-/** Parse MCP-shaped response { content: [{ text }] } into plain object */
+/** Parse EGDesk API + MCP-shaped responses into a plain object */
 function parseMcpResult(raw: any): any {
-  if (raw?.content?.[0]?.text) {
+  if (raw?.success === false) {
+    throw new Error(raw.error || 'Request failed');
+  }
+
+  const mcpPayload = raw?.result ?? raw;
+
+  if (mcpPayload?.content?.[0]?.text) {
     try {
-      return JSON.parse(raw.content[0].text);
+      return JSON.parse(mcpPayload.content[0].text);
     } catch {
-      return raw;
+      return mcpPayload;
     }
   }
-  return raw;
+
+  return mcpPayload;
 }
 
 /** JSON.stringify replacer: truncate qrImageDataUrl in displayed output */
@@ -642,6 +660,184 @@ function stripQrImages(key: string, value: any): any {
     return value.slice(0, 40) + '...[QR image truncated]';
   }
   return value;
+}
+
+// ── Display components ──────────────────────────────────────────────────────
+
+type DisplayResultViewProps = {
+  data: any;
+  tool: string;
+  onPollStatus?: () => void;
+  onCloseLogin?: () => void;
+};
+
+function DisplayResultView({ data, tool, onPollStatus, onCloseLogin }: DisplayResultViewProps) {
+  if (!data || typeof data !== 'object') {
+    return <p style={{ color: '#6b7280', fontSize: 14, margin: 0 }}>{String(data)}</p>;
+  }
+
+  if (data.success === false) {
+    return <p style={{ color: '#991b1b', fontSize: 14, margin: 0 }}>{data.error || 'Request failed'}</p>;
+  }
+
+  const hasQr = typeof data.qrImageDataUrl === 'string' && data.qrImageDataUrl.startsWith('data:');
+  const hasLoginFields = data.loginId || data.status;
+  const channels = Array.isArray(data.channels) ? data.channels : null;
+  const bots = Array.isArray(data.bots) ? data.bots : null;
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      {/* QR login */}
+      {(hasQr || (hasLoginFields && tool.includes('login'))) && (
+        <div>
+          {hasQr && (
+            <div style={{ textAlign: 'center', marginBottom: 12 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={data.qrImageDataUrl}
+                alt="Kakao QR code"
+                style={{ width: 220, height: 220, borderRadius: 10, border: '1px solid #e5e7eb' }}
+              />
+              <p style={{ color: '#6b7280', fontSize: 13, marginTop: 10 }}>
+                Scan with KakaoTalk to log in
+              </p>
+            </div>
+          )}
+
+          <dl style={kvGridStyle}>
+            {data.status && (
+              <>
+                <dt style={kvTermStyle}>Status</dt>
+                <dd style={kvDescStyle}>
+                  <span style={{
+                    ...statusBadgeStyle,
+                    background: data.status === 'logged_in' ? '#dcfce7'
+                      : data.status === 'failed' || data.status === 'expired' ? '#fef2f2'
+                      : '#fef3c7',
+                    color: data.status === 'logged_in' ? '#166534'
+                      : data.status === 'failed' || data.status === 'expired' ? '#991b1b'
+                      : '#92400e',
+                  }}>
+                    {data.status}
+                  </span>
+                </dd>
+              </>
+            )}
+            {data.message && <><dt style={kvTermStyle}>Message</dt><dd style={kvDescStyle}>{data.message}</dd></>}
+            {data.loginId && <><dt style={kvTermStyle}>Login ID</dt><dd style={kvDescStyle}><code style={inlineCodeStyle}>{data.loginId}</code></dd></>}
+            {data.service && <><dt style={kvTermStyle}>Service</dt><dd style={kvDescStyle}>{data.service}</dd></>}
+            {data.profileName && <><dt style={kvTermStyle}>Profile</dt><dd style={kvDescStyle}>{data.profileName}</dd></>}
+            {data.expiresAt && <><dt style={kvTermStyle}>Expires</dt><dd style={kvDescStyle}>{formatTimestamp(data.expiresAt)}</dd></>}
+          </dl>
+
+          {data.loginId && (onPollStatus || onCloseLogin) && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              {onPollStatus && <button onClick={onPollStatus} style={secondaryBtnStyle}>Poll status</button>}
+              {onCloseLogin && <button onClick={onCloseLogin} style={secondaryBtnStyle}>Close login</button>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Channels table */}
+      {channels && channels.length > 0 && (
+        <div>
+          <div style={miniLabelStyle}>Channels ({channels.length})</div>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Name</th>
+                  <th style={thStyle}>Search ID</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Bot</th>
+                </tr>
+              </thead>
+              <tbody>
+                {channels.map((ch: any, i: number) => (
+                  <tr key={ch.id || ch.searchId || i}>
+                    <td style={tdStyle}>{ch.name || '—'}</td>
+                    <td style={tdStyle}><code style={inlineCodeStyle}>{ch.searchId || '—'}</code></td>
+                    <td style={tdStyle}>{ch.status || '—'}</td>
+                    <td style={tdStyle}>{ch.connectedBotName || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Bots table */}
+      {bots && bots.length > 0 && (
+        <div>
+          <div style={miniLabelStyle}>Bots ({bots.length})</div>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Name</th>
+                  <th style={thStyle}>ID</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Callback</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bots.map((bot: any, i: number) => (
+                  <tr key={bot.id || i}>
+                    <td style={tdStyle}>{bot.name || '—'}</td>
+                    <td style={tdStyle}><code style={inlineCodeStyle}>{bot.id || '—'}</code></td>
+                    <td style={tdStyle}>{bot.status || (bot.isInactive ? 'inactive' : '—')}</td>
+                    <td style={tdStyle}>{bot.callbackStatus?.callbackApproved != null
+                      ? (bot.callbackStatus.callbackApproved ? 'approved' : 'pending')
+                      : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Simple success / message-only results */}
+      {!hasQr && !channels?.length && !bots?.length && data.message && (
+        <p style={{ color: '#374151', fontSize: 14, margin: 0 }}>{data.message}</p>
+      )}
+
+      {/* Fallback key-value for other structured fields */}
+      {!hasQr && !channels?.length && !bots?.length && !hasLoginFields && (
+        <KeyValueFallback data={data} />
+      )}
+    </div>
+  );
+}
+
+function KeyValueFallback({ data }: { data: Record<string, any> }) {
+  const skip = new Set(['qrImageDataUrl', 'success']);
+  const entries = Object.entries(data).filter(([k, v]) => !skip.has(k) && v != null && typeof v !== 'object');
+
+  if (entries.length === 0) {
+    return <p style={{ color: '#9ca3af', fontSize: 13, margin: 0 }}>No visual display for this result — see raw JSON below.</p>;
+  }
+
+  return (
+    <dl style={kvGridStyle}>
+      {entries.map(([key, value]) => (
+        <span key={key} style={{ display: 'contents' }}>
+          <dt style={kvTermStyle}>{key}</dt>
+          <dd style={kvDescStyle}>{String(value)}</dd>
+        </span>
+      ))}
+    </dl>
+  );
+}
+
+function formatTimestamp(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
@@ -873,4 +1069,66 @@ const resultCodeStyle: React.CSSProperties = {
   margin: 0,
   maxHeight: 400,
   overflowY: 'auto',
+};
+
+const displayPanelStyle: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 10,
+  padding: 18,
+};
+
+const kvGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '120px 1fr',
+  gap: '6px 12px',
+  margin: 0,
+};
+
+const kvTermStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#6b7280',
+  margin: 0,
+};
+
+const kvDescStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: '#111827',
+  margin: 0,
+};
+
+const inlineCodeStyle: React.CSSProperties = {
+  fontSize: 12,
+  background: '#f3f4f6',
+  padding: '1px 5px',
+  borderRadius: 4,
+};
+
+const tableWrapStyle: React.CSSProperties = {
+  overflowX: 'auto',
+  border: '1px solid #e5e7eb',
+  borderRadius: 6,
+};
+
+const tableStyle: React.CSSProperties = {
+  width: '100%',
+  borderCollapse: 'collapse',
+  fontSize: 13,
+};
+
+const thStyle: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '8px 10px',
+  background: '#f9fafb',
+  borderBottom: '1px solid #e5e7eb',
+  fontWeight: 700,
+  color: '#374151',
+  whiteSpace: 'nowrap',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '8px 10px',
+  borderBottom: '1px solid #f3f4f6',
+  color: '#111827',
 };
