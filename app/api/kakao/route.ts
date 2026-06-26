@@ -21,9 +21,13 @@ export async function POST(request: Request) {
       process.env.EGDESK_API_URL ||
       'http://localhost:19285';
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const apiKey = process.env.NEXT_PUBLIC_EGDESK_API_KEY;
+    if (apiKey) headers['X-Api-Key'] = apiKey;
+
     const res = await fetch(`${apiUrl}/kakao/tools/call`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ tool, arguments: args }),
     });
 
