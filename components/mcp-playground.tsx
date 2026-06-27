@@ -3,19 +3,26 @@
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch, getEgdeskBasePath } from '@/lib/api';
-import { parseMcpResult } from '@/lib/mcp-utils';
+import {
+  extractUploadedFilePath,
+  formatFileSize,
+  parseMcpResult,
+  readFileAsBase64,
+} from '@/lib/mcp-utils';
 import { getDemoNavLinks } from '@/lib/demo-pages';
 
 export type PlaygroundFieldDef = {
   name: string;
   label: string;
-  type: 'string' | 'boolean' | 'select' | 'number' | 'textarea' | 'json';
+  type: 'string' | 'boolean' | 'select' | 'number' | 'textarea' | 'json' | 'file';
   options?: string[];
   required?: boolean;
   placeholder?: string;
   defaultValue?: string | boolean | number;
   hint?: string;
   apiName?: string;
+  accept?: string;
+  allowManualPath?: boolean;
 };
 
 export type PlaygroundToolDef = {
@@ -52,6 +59,7 @@ export type McpPlaygroundProps = {
   onResult?: (tool: string, parsed: any) => void;
   buildExtraArgs?: () => Record<string, any>;
   getDefaultFieldValues?: (tool: PlaygroundToolDef) => Record<string, string>;
+  fileUploadApiPath?: string;
   validateBeforeRun?: (tool: PlaygroundToolDef, values: Record<string, string>) => string | null;
   runButtonLabel?: (tool: PlaygroundToolDef) => string;
 };
@@ -85,6 +93,51 @@ function buildArgs(
   }
 
   return args;
+}
+
+async function resolveFieldValues(
+  tool: PlaygroundToolDef,
+  values: Record<string, string>,
+  files: Record<string, File>,
+  uploadApiPath: string,
+): Promise<Record<string, string>> {
+  const resolved = { ...values };
+
+  for (const field of tool.fields) {
+    if (field.type !== 'file') continue;
+
+    const manualPath = values[field.name]?.trim();
+    if (manualPath && !files[field.name]) {
+      resolved[field.name] = manualPath;
+      continue;
+    }
+
+    const file = files[field.name];
+    if (!file) continue;
+
+    const content = await readFileAsBase64(file);
+    const res = await apiFetch(uploadApiPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tool: 'fs_upload_file',
+        arguments: {
+          filename: file.name,
+          content,
+          encoding: 'base64',
+        },
+      }),
+    });
+    const raw = await res.json();
+    const parsed = parseMcpResult(raw);
+    const uploadedPath = extractUploadedFilePath(parsed);
+    if (!uploadedPath) {
+      throw new Error('Upload succeeded but no file path was returned from EGDesk');
+    }
+    resolved[field.name] = uploadedPath;
+  }
+
+  return resolved;
 }
 
 function KeyValueFallback({ data }: { data: Record<string, any> }) {
@@ -127,11 +180,13 @@ export function McpPlayground({
   onResult,
   buildExtraArgs,
   getDefaultFieldValues,
+  fileUploadApiPath = '/api/filesystem',
   validateBeforeRun,
   runButtonLabel,
 }: McpPlaygroundProps) {
   const [selectedTool, setSelectedTool] = useState<PlaygroundToolDef>(tools[0]);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [fileValues, setFileValues] = useState<Record<string, File>>({});
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<PlaygroundHistoryEntry[]>([]);
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
@@ -157,6 +212,7 @@ export function McpPlayground({
     }
     const custom = getDefaultFieldValues?.(selectedTool) ?? {};
     setFieldValues({ ...defaults, ...custom });
+    setFileValues({});
   }, [selectedTool, getDefaultFieldValues]);
 
   useEffect(() => {
@@ -211,13 +267,38 @@ export function McpPlayground({
       return;
     }
 
-    const args = buildArgs(selectedTool, fieldValues, buildExtraArgs?.() ?? {});
+    for (const field of selectedTool.fields) {
+      if (field.type !== 'file' || !field.required) continue;
+      const manualPath = fieldValues[field.name]?.trim();
+      if (!fileValues[field.name] && !manualPath) {
+        recordResult(selectedTool.name, {}, null, 0, `${field.label} is required`);
+        return;
+      }
+    }
 
     setRunning(true);
     startRunningTimer(selectedTool.name);
 
     const start = Date.now();
+    let args: Record<string, any> = {};
     try {
+      const hasFileFields = selectedTool.fields.some(f => f.type === 'file' && fileValues[f.name]);
+      if (hasFileFields) {
+        setRunningHint('Uploading file to EGDesk Downloads…');
+      }
+
+      const resolvedValues = await resolveFieldValues(
+        selectedTool,
+        fieldValues,
+        fileValues,
+        fileUploadApiPath,
+      );
+      args = buildArgs(selectedTool, resolvedValues, buildExtraArgs?.() ?? {});
+
+      if (hasFileFields) {
+        startRunningTimer(selectedTool.name);
+      }
+
       const res = await apiFetch(apiPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -237,6 +318,18 @@ export function McpPlayground({
 
   const setField = (name: string, value: string) => {
     setFieldValues(prev => ({ ...prev, [name]: value }));
+  };
+
+  const setFile = (name: string, file: File | null) => {
+    setFileValues(prev => {
+      const next = { ...prev };
+      if (file) next[name] = file;
+      else delete next[name];
+      return next;
+    });
+    if (file) {
+      setFieldValues(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
   const displayEntry = history.find(e => e.id === expandedEntry) ?? history[0];
@@ -347,6 +440,46 @@ export function McpPlayground({
                       rows={3}
                       style={{ ...inputStyle, resize: 'vertical', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}
                     />
+                  ) : field.type === 'file' ? (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <label style={filePickerBtnStyle}>
+                          Choose file
+                          <input
+                            type="file"
+                            accept={field.accept ?? '.pdf,application/pdf'}
+                            style={{ display: 'none' }}
+                            onChange={e => setFile(field.name, e.target.files?.[0] ?? null)}
+                          />
+                        </label>
+                        {fileValues[field.name] ? (
+                          <span style={fileMetaStyle}>
+                            {fileValues[field.name].name} ({formatFileSize(fileValues[field.name].size)})
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 13, color: '#9ca3af' }}>No file selected</span>
+                        )}
+                        {fileValues[field.name] && (
+                          <button
+                            type="button"
+                            onClick={() => setFile(field.name, null)}
+                            style={{ ...secondaryBtnStyle, fontSize: 12, padding: '4px 10px' }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      {(field.allowManualPath ?? true) && (
+                        <input
+                          type="text"
+                          value={fieldValues[field.name] ?? ''}
+                          onChange={e => setField(field.name, e.target.value)}
+                          placeholder={field.placeholder ?? 'Or paste an absolute path on the EGDesk machine'}
+                          style={inputStyle}
+                          disabled={Boolean(fileValues[field.name])}
+                        />
+                      )}
+                    </div>
                   ) : (
                     <input
                       type={field.type === 'number' ? 'number' : 'text'}
@@ -636,6 +769,25 @@ const secondaryBtnStyle: React.CSSProperties = {
   border: '1px solid #d1d5db',
   borderRadius: 6,
   cursor: 'pointer',
+};
+
+const filePickerBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '7px 14px',
+  fontSize: 13,
+  fontWeight: 600,
+  background: '#fff',
+  color: '#374151',
+  border: '1px solid #d1d5db',
+  borderRadius: 6,
+  cursor: 'pointer',
+};
+
+const fileMetaStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: '#374151',
+  fontWeight: 600,
 };
 
 const statusBadgeStyle: React.CSSProperties = {

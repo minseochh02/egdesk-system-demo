@@ -25,11 +25,12 @@ const TOOLS: PlaygroundToolDef[] = [
     fields: [
       {
         name: 'file_path',
-        label: 'Absolute PDF path',
-        type: 'string',
+        label: 'PDF file',
+        type: 'file',
+        accept: '.pdf,application/pdf',
         required: true,
         placeholder: '/Users/you/Documents/report.pdf',
-        hint: 'Same path rules as filesystem MCP — must be a .pdf file EGDesk can read.',
+        hint: 'Choose a PDF to upload to EGDesk Downloads, or paste an absolute path EGDesk can read directly.',
       },
     ],
   },
