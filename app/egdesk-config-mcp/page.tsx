@@ -9,13 +9,58 @@ import {
 
 const TOOLS: PlaygroundToolDef[] = [
   {
+    name: 'egdesk_set_gemini_key',
+    title: 'Save API key',
+    description:
+      'Save a Google/Gemini API key into EGDesk AI Keys Manager. Updates an existing entry matched by keyId or name, or creates a new one. Use name "egdesk" for the preferred key PageIndex picks first.',
+    category: 'keys',
+    helperName: 'setGeminiApiKey',
+    fields: [
+      {
+        name: 'apiKey',
+        label: 'API key',
+        type: 'string',
+        required: true,
+        placeholder: 'AIza...',
+        hint: 'Stored in EGDesk AI Keys Manager on the machine running EGDesk.',
+      },
+      {
+        name: 'name',
+        label: 'Key name',
+        type: 'string',
+        placeholder: 'egdesk',
+        defaultValue: 'egdesk',
+        hint: 'Existing Google key with this name is updated; otherwise a new entry is created.',
+      },
+      {
+        name: 'keyId',
+        label: 'Key ID (optional)',
+        type: 'string',
+        placeholder: 'Update a specific AI Keys entry by id',
+      },
+      {
+        name: 'setActive',
+        label: 'Set active',
+        type: 'boolean',
+        defaultValue: true,
+      },
+    ],
+  },
+  {
     name: 'egdesk_get_gemini_key',
     title: 'Get preferred key',
     description:
-      'Return the Google/Gemini API key EGDesk uses (egdesk-named → active → any Google key → GEMINI_API_KEY env).',
+      'Return the Google/Gemini API key EGDesk uses (egdesk-named → active → any Google key → GEMINI_API_KEY env). Pass apiKey to return a value directly without reading the store.',
     category: 'keys',
     helperName: 'getGeminiApiKey',
     fields: [
+      {
+        name: 'apiKey',
+        label: 'API key override (optional)',
+        type: 'string',
+        placeholder: 'Return this key without reading AI Keys Manager',
+        hint: 'Not persisted — useful for one-off checks.',
+      },
       {
         name: 'keyId',
         label: 'Key ID (optional)',
@@ -98,12 +143,16 @@ export default function EgdeskConfigPlayground() {
       );
     }
 
-    if (data?.apiKey || data?.success === false) {
+    if (data?.apiKey || data?.success === false || data?.action) {
       return (
         <dl style={kvGridStyle}>
           <dt style={kvTermStyle}>Configured</dt>
           <dd style={kvDescStyle}>{data.success === false ? 'No' : 'Yes'}</dd>
+          {data.action && <><dt style={kvTermStyle}>Action</dt><dd style={kvDescStyle}>{data.action}</dd></>}
           {data.source && <><dt style={kvTermStyle}>Source</dt><dd style={kvDescStyle}>{data.source}</dd></>}
+          {data.persisted === false && (
+            <><dt style={kvTermStyle}>Persisted</dt><dd style={kvDescStyle}>No (argument only)</dd></>
+          )}
           {data.selectionReason && (
             <><dt style={kvTermStyle}>Selection</dt><dd style={kvDescStyle}>{data.selectionReason}</dd></>
           )}
@@ -127,7 +176,7 @@ export default function EgdeskConfigPlayground() {
       <div style={{ flex: 1 }}>
         <div style={playgroundStyles.miniLabelStyle}>Security note</div>
         <p style={{ fontSize: 13, color: '#991b1b', margin: '4px 0 0', lineHeight: 1.55 }}>
-          These tools return full Gemini API keys. The EGDesk Config MCP route requires <code style={playgroundStyles.inlineCodeStyle}>X-Api-Key</code> when tunnel auth is enabled.
+          These tools read and write full Gemini API keys. The EGDesk Config MCP route requires <code style={playgroundStyles.inlineCodeStyle}>X-Api-Key</code> when tunnel auth is enabled.
         </p>
       </div>
     </div>
@@ -138,7 +187,7 @@ export default function EgdeskConfigPlayground() {
       currentHref="/egdesk-config-mcp"
       eyebrow="EGDesk Config MCP"
       title="Gemini Keys Playground"
-      subtitle="Fetch Google/Gemini API keys from EGDesk AI Keys Manager — same selection logic PageIndex and Gemini generation use."
+      subtitle="Fetch or save Google/Gemini API keys in EGDesk AI Keys Manager — same selection logic PageIndex and Gemini generation use."
       apiPath="/api/egdesk-config"
       tools={TOOLS}
       categories={CATEGORIES}

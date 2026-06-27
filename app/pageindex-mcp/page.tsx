@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type CSSProperties } from 'react';
 import {
   McpPlayground,
   playgroundStyles,
@@ -10,16 +10,34 @@ import {
 type IndexedDoc = {
   id?: string;
   doc_id?: string;
+  doc_name?: string;
   name?: string;
+  doc_description?: string;
   description?: string;
   page_count?: number;
+  status?: 'indexing' | 'completed' | 'failed';
+  stage?: string;
+  error?: string;
 };
+
+function docName(doc: IndexedDoc): string {
+  return doc.doc_name || doc.name || '—';
+}
+
+function docStatus(doc: IndexedDoc): string {
+  return doc.status || 'completed';
+}
+
+function isIncomplete(doc: IndexedDoc): boolean {
+  const status = docStatus(doc);
+  return status === 'indexing' || status === 'failed';
+}
 
 const TOOLS: PlaygroundToolDef[] = [
   {
     name: 'pageindex_index_document',
     title: 'Index PDF',
-    description: 'Build a hierarchical PageIndex tree from a PDF on disk. Takes 30–60s and requires a Gemini API key in EGDesk.',
+    description: 'Build a hierarchical PageIndex tree from a PDF on disk. Progress is checkpointed after each stage; re-index the same file or use Resume to continue if interrupted. Takes 30–60s and requires a Gemini API key in EGDesk.',
     category: 'index',
     helperName: 'indexPageIndexPdf',
     fields: [
@@ -30,7 +48,31 @@ const TOOLS: PlaygroundToolDef[] = [
         accept: '.pdf,application/pdf',
         required: true,
         placeholder: '/Users/you/Documents/report.pdf',
-        hint: 'Choose a PDF to upload to EGDesk Downloads, or paste an absolute path EGDesk can read directly.',
+        hint: 'Choose a PDF — it uploads to EGDesk Downloads via File System MCP, then indexes. Or paste an absolute path EGDesk can read. File System MCP must be enabled.',
+      },
+      {
+        name: 'force_restart',
+        label: 'Force restart',
+        type: 'boolean',
+        defaultValue: false,
+        hint: 'Ignore any saved checkpoint for this file and start fresh.',
+      },
+    ],
+  },
+  {
+    name: 'pageindex_resume_document',
+    title: 'Resume indexing',
+    description: 'Continue an interrupted indexing job from its last saved checkpoint. Use List documents to find jobs with status "indexing" or "failed".',
+    category: 'index',
+    helperName: 'resumePageIndexDocument',
+    fields: [
+      {
+        name: 'doc_id',
+        label: 'Document ID',
+        type: 'string',
+        required: true,
+        placeholder: 'doc_abc123',
+        hint: 'Returned by Index PDF or List documents for incomplete jobs.',
       },
     ],
   },
@@ -125,10 +167,21 @@ const CATEGORIES = [
 ];
 
 const RUNNING_HINTS: Record<string, string> = {
-  pageindex_index_document: 'Gemini is building the hierarchical tree — this usually takes 30–60 seconds.',
+  pageindex_index_document: 'Gemini is building the hierarchical tree — progress is saved after each stage.',
+  pageindex_resume_document: 'Resuming from the last checkpoint — summaries may take a while.',
   pageindex_get_structure: 'Loading section tree…',
   pageindex_get_pages: 'Extracting page text…',
 };
+
+function statusBadgeStyle(status: string): CSSProperties {
+  if (status === 'completed') {
+    return { background: '#ecfdf5', color: '#065f46' };
+  }
+  if (status === 'failed') {
+    return { background: '#fef2f2', color: '#991b1b' };
+  }
+  return { background: '#fef3c7', color: '#92400e' };
+}
 
 function docId(doc: IndexedDoc): string {
   return doc.doc_id || doc.id || '';
@@ -142,10 +195,13 @@ function StructureTree({ nodes, depth = 0 }: { nodes: any[]; depth?: number }) {
         <li key={node.id || i} style={{ marginBottom: 6 }}>
           <div style={{ fontSize: 13, color: '#111827' }}>
             <strong>{node.title || node.name || 'Untitled'}</strong>
-            {(node.start_page != null || node.page != null) && (
+            {(node.start_index != null || node.start_page != null || node.page != null) && (
               <span style={{ color: '#6b7280', marginLeft: 8 }}>
-                p.{node.start_page ?? node.page}
-                {node.end_page != null && node.end_page !== node.start_page ? `–${node.end_page}` : ''}
+                p.{node.start_index ?? node.start_page ?? node.page}
+                {(node.end_index ?? node.end_page) != null &&
+                  (node.end_index ?? node.end_page) !== (node.start_index ?? node.start_page ?? node.page)
+                  ? `–${node.end_index ?? node.end_page}`
+                  : ''}
               </span>
             )}
           </div>
@@ -154,7 +210,9 @@ function StructureTree({ nodes, depth = 0 }: { nodes: any[]; depth?: number }) {
               {node.summary}
             </p>
           )}
-          {node.children && <StructureTree nodes={node.children} depth={depth + 1} />}
+          {(node.nodes || node.children) && (
+            <StructureTree nodes={node.nodes || node.children} depth={depth + 1} />
+          )}
         </li>
       ))}
     </ul>
@@ -201,7 +259,9 @@ export default function PageIndexPlayground() {
 
     const docs = Array.isArray(data?.documents) ? data.documents : documents;
     const showDocTable = docs.length > 0 && (
-      tool === 'pageindex_list_documents' || tool === 'pageindex_index_document'
+      tool === 'pageindex_list_documents'
+      || tool === 'pageindex_index_document'
+      || tool === 'pageindex_resume_document'
     );
 
     const structureNodes =
@@ -213,7 +273,47 @@ export default function PageIndexPlayground() {
     return (
       <div style={{ display: 'grid', gap: 16 }}>
         {data?.message && (
-          <p style={{ fontSize: 14, color: '#065f46', margin: 0 }}>{data.message}</p>
+          <p style={{
+            fontSize: 14,
+            color: data?.status === 'completed' || data?.success ? '#065f46' : '#92400e',
+            margin: 0,
+          }}>
+            {data.message}
+          </p>
+        )}
+
+        {(data?.status || data?.stage) && (
+          <dl style={kvGridStyle}>
+            {data.status && (
+              <>
+                <dt style={kvTermStyle}>Status</dt>
+                <dd style={kvDescStyle}>
+                  <span style={{
+                    ...statusBadgeStyle(String(data.status)),
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    display: 'inline-block',
+                  }}>
+                    {data.status}
+                  </span>
+                </dd>
+              </>
+            )}
+            {data.stage && (
+              <>
+                <dt style={kvTermStyle}>Stage</dt>
+                <dd style={kvDescStyle}>{data.stage}</dd>
+              </>
+            )}
+            {data.error && (
+              <>
+                <dt style={kvTermStyle}>Error</dt>
+                <dd style={kvDescStyle}>{data.error}</dd>
+              </>
+            )}
+          </dl>
         )}
 
         {data?.doc_id && (
@@ -234,6 +334,7 @@ export default function PageIndexPlayground() {
                   <tr>
                     <th style={thStyle}>Name</th>
                     <th style={thStyle}>ID</th>
+                    <th style={thStyle}>Status</th>
                     <th style={thStyle}>Pages</th>
                     <th style={thStyle} />
                   </tr>
@@ -241,11 +342,25 @@ export default function PageIndexPlayground() {
                 <tbody>
                   {docs.map((doc, i) => {
                     const id = docId(doc);
+                    const status = docStatus(doc);
                     const isSelected = selectedDocId === id;
                     return (
                       <tr key={id || i} style={isSelected ? { background: '#ecfdf5' } : undefined}>
-                        <td style={tdStyle}>{doc.name || '—'}</td>
+                        <td style={tdStyle}>{docName(doc)}</td>
                         <td style={tdStyle}><code style={inlineCodeStyle}>{id || '—'}</code></td>
+                        <td style={tdStyle}>
+                          <span style={{
+                            ...statusBadgeStyle(status),
+                            fontSize: 11,
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 999,
+                            display: 'inline-block',
+                          }}>
+                            {status}
+                            {doc.stage && status !== 'completed' ? ` · ${doc.stage}` : ''}
+                          </span>
+                        </td>
                         <td style={tdStyle}>{doc.page_count ?? '—'}</td>
                         <td style={tdStyle}>
                           {id && (
@@ -303,7 +418,16 @@ export default function PageIndexPlayground() {
           </div>
         )}
 
-        {data?.name && !showDocTable && (
+        {data?.doc_name && !showDocTable && (
+          <dl style={kvGridStyle}>
+            {data.doc_name && <><dt style={kvTermStyle}>Name</dt><dd style={kvDescStyle}>{data.doc_name}</dd></>}
+            {data.doc_description && <><dt style={kvTermStyle}>Description</dt><dd style={kvDescStyle}>{data.doc_description}</dd></>}
+            {data.page_count != null && <><dt style={kvTermStyle}>Pages</dt><dd style={kvDescStyle}>{data.page_count}</dd></>}
+            {data.can_resume != null && <><dt style={kvTermStyle}>Can resume</dt><dd style={kvDescStyle}>{data.can_resume ? 'Yes' : 'No'}</dd></>}
+          </dl>
+        )}
+
+        {data?.name && !showDocTable && !data?.doc_name && (
           <dl style={kvGridStyle}>
             {data.name && <><dt style={kvTermStyle}>Name</dt><dd style={kvDescStyle}>{data.name}</dd></>}
             {data.description && <><dt style={kvTermStyle}>Description</dt><dd style={kvDescStyle}>{data.description}</dd></>}
@@ -324,7 +448,7 @@ export default function PageIndexPlayground() {
           ) : 'None — index or list documents first'}
         </p>
         <p style={playgroundStyles.hintStyle}>
-          doc_id pre-fills Get structure, Get pages, and Delete tools.
+          doc_id pre-fills Resume, Get structure, Get pages, and Delete tools.
         </p>
       </div>
       <div style={playgroundStyles.sessionPillsStyle}>
@@ -335,6 +459,14 @@ export default function PageIndexPlayground() {
         }}>
           {documents.length} indexed
         </span>
+        {documents.some(isIncomplete) && (
+          <span style={{
+            ...playgroundStyles.statusBadgeStyle,
+            ...statusBadgeStyle('indexing'),
+          }}>
+            {documents.filter(isIncomplete).length} incomplete
+          </span>
+        )}
       </div>
     </div>
   );
@@ -344,7 +476,7 @@ export default function PageIndexPlayground() {
       currentHref="/pageindex-mcp"
       eyebrow="EGDesk PageIndex MCP"
       title="PageIndex Playground"
-      subtitle="Index PDFs into a hierarchical tree, inspect structure, and fetch page text. Enable the PageIndex MCP server in EGDesk and set a Gemini API key."
+      subtitle="Index PDFs into a hierarchical tree with checkpointed progress. Resume interrupted jobs, inspect structure, and fetch page text. Enable the PageIndex MCP server in EGDesk and set a Gemini API key."
       apiPath="/api/pageindex"
       tools={TOOLS}
       categories={CATEGORIES}

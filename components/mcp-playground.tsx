@@ -8,6 +8,7 @@ import {
   formatFileSize,
   parseMcpResult,
   readFileAsBase64,
+  type FileFieldPayload,
 } from '@/lib/mcp-utils';
 import { getDemoNavLinks } from '@/lib/demo-pages';
 
@@ -98,7 +99,7 @@ function buildArgs(
 async function resolveFieldValues(
   tool: PlaygroundToolDef,
   values: Record<string, string>,
-  files: Record<string, File>,
+  filePayloads: Record<string, FileFieldPayload>,
   uploadApiPath: string,
 ): Promise<Record<string, string>> {
   const resolved = { ...values };
@@ -107,28 +108,33 @@ async function resolveFieldValues(
     if (field.type !== 'file') continue;
 
     const manualPath = values[field.name]?.trim();
-    if (manualPath && !files[field.name]) {
+    if (manualPath && !filePayloads[field.name]) {
       resolved[field.name] = manualPath;
       continue;
     }
 
-    const file = files[field.name];
-    if (!file) continue;
+    const payload = filePayloads[field.name];
+    if (!payload) continue;
 
-    const content = await readFileAsBase64(file);
     const res = await apiFetch(uploadApiPath, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tool: 'fs_upload_file',
         arguments: {
-          filename: file.name,
-          content,
+          filename: payload.name,
+          content: payload.base64,
           encoding: 'base64',
         },
       }),
     });
     const raw = await res.json();
+    if (!res.ok || raw?.success === false) {
+      throw new Error(
+        raw?.error ||
+          'Failed to upload file via File System MCP. Enable the File System MCP server in EGDesk.',
+      );
+    }
     const parsed = parseMcpResult(raw);
     const uploadedPath = extractUploadedFilePath(parsed);
     if (!uploadedPath) {
@@ -186,7 +192,9 @@ export function McpPlayground({
 }: McpPlaygroundProps) {
   const [selectedTool, setSelectedTool] = useState<PlaygroundToolDef>(tools[0]);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
-  const [fileValues, setFileValues] = useState<Record<string, File>>({});
+  const [filePayloads, setFilePayloads] = useState<Record<string, FileFieldPayload>>({});
+  const [fileReading, setFileReading] = useState<Record<string, boolean>>({});
+  const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<PlaygroundHistoryEntry[]>([]);
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
@@ -212,7 +220,9 @@ export function McpPlayground({
     }
     const custom = getDefaultFieldValues?.(selectedTool) ?? {};
     setFieldValues({ ...defaults, ...custom });
-    setFileValues({});
+    setFilePayloads({});
+    setFileReading({});
+    setFileErrors({});
   }, [selectedTool, getDefaultFieldValues]);
 
   useEffect(() => {
@@ -270,7 +280,16 @@ export function McpPlayground({
     for (const field of selectedTool.fields) {
       if (field.type !== 'file' || !field.required) continue;
       const manualPath = fieldValues[field.name]?.trim();
-      if (!fileValues[field.name] && !manualPath) {
+      const payload = filePayloads[field.name];
+      if (fileReading[field.name]) {
+        recordResult(selectedTool.name, {}, null, 0, `Still reading ${field.label.toLowerCase()}…`);
+        return;
+      }
+      if (fileErrors[field.name]) {
+        recordResult(selectedTool.name, {}, null, 0, fileErrors[field.name]);
+        return;
+      }
+      if (!payload && !manualPath) {
         recordResult(selectedTool.name, {}, null, 0, `${field.label} is required`);
         return;
       }
@@ -282,20 +301,22 @@ export function McpPlayground({
     const start = Date.now();
     let args: Record<string, any> = {};
     try {
-      const hasFileFields = selectedTool.fields.some(f => f.type === 'file' && fileValues[f.name]);
-      if (hasFileFields) {
-        setRunningHint('Uploading file to EGDesk Downloads…');
+      const hasFileUpload = selectedTool.fields.some(
+        f => f.type === 'file' && filePayloads[f.name],
+      );
+      if (hasFileUpload) {
+        setRunningHint('Uploading file to EGDesk Downloads via File System MCP…');
       }
 
       const resolvedValues = await resolveFieldValues(
         selectedTool,
         fieldValues,
-        fileValues,
+        filePayloads,
         fileUploadApiPath,
       );
       args = buildArgs(selectedTool, resolvedValues, buildExtraArgs?.() ?? {});
 
-      if (hasFileFields) {
+      if (hasFileUpload) {
         startRunningTimer(selectedTool.name);
       }
 
@@ -320,15 +341,43 @@ export function McpPlayground({
     setFieldValues(prev => ({ ...prev, [name]: value }));
   };
 
-  const setFile = (name: string, file: File | null) => {
-    setFileValues(prev => {
+  const loadFile = async (name: string, file: File | null) => {
+    setFileErrors(prev => {
       const next = { ...prev };
-      if (file) next[name] = file;
-      else delete next[name];
+      delete next[name];
       return next;
     });
-    if (file) {
-      setFieldValues(prev => ({ ...prev, [name]: '' }));
+
+    if (!file) {
+      setFilePayloads(prev => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      return;
+    }
+
+    setFileReading(prev => ({ ...prev, [name]: true }));
+    setFieldValues(prev => ({ ...prev, [name]: '' }));
+
+    try {
+      const base64 = await readFileAsBase64(file);
+      setFilePayloads(prev => ({
+        ...prev,
+        [name]: { name: file.name, size: file.size, base64 },
+      }));
+    } catch (err: any) {
+      setFilePayloads(prev => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      setFileErrors(prev => ({
+        ...prev,
+        [name]: err?.message || 'Could not read the selected file. Try choosing it again.',
+      }));
+    } finally {
+      setFileReading(prev => ({ ...prev, [name]: false }));
     }
   };
 
@@ -443,32 +492,44 @@ export function McpPlayground({
                   ) : field.type === 'file' ? (
                     <div style={{ display: 'grid', gap: 8 }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <label style={filePickerBtnStyle}>
-                          Choose file
+                        <label style={{
+                          ...filePickerBtnStyle,
+                          opacity: fileReading[field.name] ? 0.6 : 1,
+                          pointerEvents: fileReading[field.name] ? 'none' : 'auto',
+                        }}>
+                          {fileReading[field.name] ? 'Reading file…' : 'Choose file'}
                           <input
                             type="file"
                             accept={field.accept ?? '.pdf,application/pdf'}
                             style={{ display: 'none' }}
-                            onChange={e => setFile(field.name, e.target.files?.[0] ?? null)}
+                            onChange={e => {
+                              void loadFile(field.name, e.target.files?.[0] ?? null);
+                              e.currentTarget.value = '';
+                            }}
                           />
                         </label>
-                        {fileValues[field.name] ? (
+                        {filePayloads[field.name] ? (
                           <span style={fileMetaStyle}>
-                            {fileValues[field.name].name} ({formatFileSize(fileValues[field.name].size)})
+                            {filePayloads[field.name].name} ({formatFileSize(filePayloads[field.name].size)})
                           </span>
+                        ) : fileReading[field.name] ? (
+                          <span style={{ fontSize: 13, color: '#6b7280' }}>Preparing upload…</span>
                         ) : (
                           <span style={{ fontSize: 13, color: '#9ca3af' }}>No file selected</span>
                         )}
-                        {fileValues[field.name] && (
+                        {filePayloads[field.name] && !fileReading[field.name] && (
                           <button
                             type="button"
-                            onClick={() => setFile(field.name, null)}
+                            onClick={() => void loadFile(field.name, null)}
                             style={{ ...secondaryBtnStyle, fontSize: 12, padding: '4px 10px' }}
                           >
                             Clear
                           </button>
                         )}
                       </div>
+                      {fileErrors[field.name] && (
+                        <p style={{ ...hintStyle, color: '#dc2626', margin: 0 }}>{fileErrors[field.name]}</p>
+                      )}
                       {(field.allowManualPath ?? true) && (
                         <input
                           type="text"
@@ -476,7 +537,7 @@ export function McpPlayground({
                           onChange={e => setField(field.name, e.target.value)}
                           placeholder={field.placeholder ?? 'Or paste an absolute path on the EGDesk machine'}
                           style={inputStyle}
-                          disabled={Boolean(fileValues[field.name])}
+                          disabled={Boolean(filePayloads[field.name]) || Boolean(fileReading[field.name])}
                         />
                       )}
                     </div>

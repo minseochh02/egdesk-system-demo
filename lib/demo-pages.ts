@@ -16,17 +16,17 @@ export const DEMO_PAGES: DemoPageLink[] = [
   },
   {
     title: 'PageIndex MCP',
-    description: 'Index PDFs into a hierarchical tree, browse structure, and fetch page text — powered by Gemini.',
+    description: 'Index PDFs into a hierarchical tree with checkpointed progress, resume interrupted jobs, and fetch page text.',
     href: '/pageindex-mcp',
     eyebrow: 'Document indexing',
-    items: ['indexPageIndexPdf', 'getPageIndexStructure', 'getPageIndexPages'],
+    items: ['indexPageIndexPdf', 'resumePageIndexDocument', 'getPageIndexStructure'],
   },
   {
     title: 'EGDesk Config MCP',
-    description: 'Fetch Google/Gemini API keys from AI Keys Manager — same keys PageIndex and Gemini tools use.',
+    description: 'Fetch or save Google/Gemini API keys in AI Keys Manager — same keys PageIndex and Gemini generation use.',
     href: '/egdesk-config-mcp',
     eyebrow: 'Runtime config',
-    items: ['getGeminiApiKey', 'listGeminiApiKeys'],
+    items: ['getGeminiApiKey', 'setGeminiApiKey', 'listGeminiApiKeys'],
   },
   {
     title: 'Korean Law MCP',
