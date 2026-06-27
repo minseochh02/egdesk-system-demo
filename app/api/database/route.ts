@@ -18,7 +18,7 @@ import {
   deleteRows,
   aggregateTable,
   executeSQL,
-} from '../../../../egdesk-helpers';
+} from '../../../egdesk-helpers';
 
 type HelperArgs = Record<string, any>;
 
