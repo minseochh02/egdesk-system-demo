@@ -23,10 +23,10 @@ export const DEMO_PAGES: DemoPageLink[] = [
   },
   {
     title: 'EGDesk Config MCP',
-    description: 'Fetch or save Google/Gemini API keys in AI Keys Manager — same keys PageIndex and Gemini generation use.',
+    description: 'Fetch or save AI provider API keys (Google, OpenAI, Anthropic, Azure) in AI Keys Manager.',
     href: '/egdesk-config-mcp',
     eyebrow: 'Runtime config',
-    items: ['getGeminiApiKey', 'setGeminiApiKey', 'listGeminiApiKeys'],
+    items: ['getApiKey', 'setApiKey', 'listApiKeys'],
   },
   {
     title: 'Korean Law MCP',
