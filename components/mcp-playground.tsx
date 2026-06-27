@@ -471,23 +471,6 @@ export function McpPlayground({
   );
 }
 
-export const playgroundStyles = {
-  sessionBarStyle,
-  sessionPillsStyle,
-  statusBadgeStyle,
-  miniLabelStyle,
-  tableWrapStyle,
-  tableStyle,
-  thStyle,
-  tdStyle,
-  inlineCodeStyle,
-  secondaryBtnStyle,
-  hintStyle,
-  kvGridStyle,
-  kvTermStyle,
-  kvDescStyle,
-};
-
 const pageStyle: React.CSSProperties = {
   maxWidth: 1200,
   margin: '0 auto',
@@ -779,4 +762,21 @@ const inlineCodeStyle: React.CSSProperties = {
   background: '#f3f4f6',
   padding: '1px 5px',
   borderRadius: 4,
+};
+
+export const playgroundStyles = {
+  sessionBarStyle,
+  sessionPillsStyle,
+  statusBadgeStyle,
+  miniLabelStyle,
+  tableWrapStyle,
+  tableStyle,
+  thStyle,
+  tdStyle,
+  inlineCodeStyle,
+  secondaryBtnStyle,
+  hintStyle,
+  kvGridStyle,
+  kvTermStyle,
+  kvDescStyle,
 };
