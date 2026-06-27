@@ -3,6 +3,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch, getEgdeskBasePath } from '@/lib/api';
+import { getDemoNavLinks } from '@/lib/demo-pages';
 
 type FieldDef = {
   name: string;
@@ -96,8 +97,7 @@ export default function InventoryMcpPlayground() {
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
   const [installStatus, setInstallStatus] = useState<InstallStatus | null>(null);
   const [landingHref, setLandingHref] = useState('/');
-  const [dbHref, setDbHref] = useState('/database');
-  const [kakaoHref, setKakaoHref] = useState('/kakao-mcp');
+  const [navLinks, setNavLinks] = useState<{ href: string; label: string }[]>([]);
   const [scannerHref, setScannerHref] = useState('/inventory-scanner');
   const nextId = useRef(1);
 
@@ -130,8 +130,7 @@ export default function InventoryMcpPlayground() {
   useEffect(() => {
     const bp = getEgdeskBasePath();
     setLandingHref(bp || '/');
-    setDbHref(`${bp}/database`);
-    setKakaoHref(`${bp}/kakao-mcp`);
+    setNavLinks(getDemoNavLinks(bp, '/inventory-mcp'));
     setScannerHref(`${bp}/inventory-scanner`);
     loadStatus();
   }, [loadStatus]);
@@ -213,8 +212,9 @@ export default function InventoryMcpPlayground() {
       <header style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
           <a href={landingHref} style={navLinkStyle}>Back to landing</a>
-          <a href={dbHref} style={navLinkStyle}>Database demo</a>
-          <a href={kakaoHref} style={navLinkStyle}>Kakao MCP</a>
+          {navLinks.map(link => (
+            <a key={link.href} href={link.href} style={navLinkStyle}>{link.label}</a>
+          ))}
           <a href={scannerHref} style={navLinkStyle}>Live scanner</a>
         </div>
         <div style={eyebrowStyle}>EGDesk Inventory MCP</div>

@@ -22,6 +22,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['indexPageIndexPdf', 'getPageIndexStructure', 'getPageIndexPages'],
   },
   {
+    title: 'EGDesk Config MCP',
+    description: 'Fetch Google/Gemini API keys from AI Keys Manager — same keys PageIndex and Gemini tools use.',
+    href: '/egdesk-config-mcp',
+    eyebrow: 'Runtime config',
+    items: ['getGeminiApiKey', 'listGeminiApiKeys'],
+  },
+  {
     title: 'Korean Law MCP',
     description: 'Search 법제처 for laws, precedents, administrative rules, and fetch full legal text.',
     href: '/korean-law-mcp',
@@ -88,8 +95,10 @@ export const DEMO_PAGES: DemoPageLink[] = [
 
 /** Nav links for playground headers (excludes current page). */
 export function getDemoNavLinks(basePath: string, currentHref?: string) {
-  return DEMO_PAGES.filter(p => p.href !== currentHref).map(p => ({
-    href: `${basePath}${p.href}`,
+  const prefix = basePath.replace(/\/$/, '');
+  const pageLinks = DEMO_PAGES.filter(p => p.href !== currentHref).map(p => ({
+    href: `${prefix}${p.href}`,
     label: p.title.replace(/ Demo$| MCP$| Guide$| Setup$/, '').replace(/^Kakao MCP Guide$/, 'Kakao MCP'),
   }));
+  return [{ href: `${prefix}/`, label: 'All demos' }, ...pageLinks];
 }

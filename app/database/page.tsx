@@ -3,6 +3,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch, getEgdeskBasePath } from '@/lib/api';
+import { getDemoNavLinks } from '@/lib/demo-pages';
 
 // ── Tool definitions ────────────────────────────────────────────────────────
 
@@ -222,8 +223,7 @@ export default function DatabasePlayground() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
   const [landingHref, setLandingHref] = useState('/');
-  const [kakaoHref, setKakaoHref] = useState('/kakao-mcp');
-  const [inventoryHref, setInventoryHref] = useState('/inventory-mcp');
+  const [navLinks, setNavLinks] = useState<{ href: string; label: string }[]>([]);
   const nextId = useRef(1);
 
   const loadMeta = useCallback(async () => {
@@ -242,8 +242,7 @@ export default function DatabasePlayground() {
   useEffect(() => {
     const bp = getEgdeskBasePath();
     setLandingHref(bp || '/');
-    setKakaoHref(`${bp}/kakao-mcp`);
-    setInventoryHref(`${bp}/inventory-mcp`);
+    setNavLinks(getDemoNavLinks(bp, '/database'));
     loadMeta();
   }, [loadMeta]);
 
@@ -398,8 +397,9 @@ export default function DatabasePlayground() {
       <header style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
           <a href={landingHref} style={navLinkStyle}>Back to landing</a>
-          <a href={kakaoHref} style={navLinkStyle}>Kakao MCP guide</a>
-          <a href={inventoryHref} style={navLinkStyle}>Inventory MCP</a>
+          {navLinks.map(link => (
+            <a key={link.href} href={link.href} style={navLinkStyle}>{link.label}</a>
+          ))}
         </div>
         <div style={eyebrowStyle}>EGDesk Database</div>
         <h1 style={titleStyle}>Query Playground</h1>

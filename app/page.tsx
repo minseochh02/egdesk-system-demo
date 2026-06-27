@@ -3,38 +3,7 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { getEgdeskBasePath } from '@/lib/api';
-
-type DemoPage = {
-  title: string;
-  description: string;
-  href: string;
-  eyebrow: string;
-  items: string[];
-};
-
-const pages: DemoPage[] = [
-  {
-    title: 'Database Demo',
-    description: 'Try every database helper — queryTable, insertRows, updateRows, search, and SQL — with live results.',
-    href: '/database',
-    eyebrow: 'Data helpers',
-    items: ['queryTable', 'insertRows', 'updateRows', 'searchTable'],
-  },
-  {
-    title: 'Inventory MCP',
-    description: 'Install the camera-based inventory scanner into Next.js or Vite projects via inventory_setup_scanner.',
-    href: '/inventory-mcp',
-    eyebrow: 'Inventory scanner',
-    items: ['inventory_setup_scanner', 'YOLO', 'DINO'],
-  },
-  {
-    title: 'Kakao MCP Guide',
-    description: 'Review every Kakao Channel MCP tool with helper examples, raw calls, inputs, and setup notes.',
-    href: '/kakao-mcp',
-    eyebrow: 'Kakao automation',
-    items: ['channels', 'bots', 'callbacks'],
-  },
-];
+import { DEMO_PAGES } from '@/lib/demo-pages';
 
 export default function Home() {
   const [basePath, setBasePath] = useState('');
@@ -49,13 +18,14 @@ export default function Home() {
         <div style={eyebrowStyle}>EGDesk System Demo</div>
         <h1 style={titleStyle}>Choose a demo page</h1>
         <p style={introStyle}>
-          This workspace shows the generated EGDesk integration surface: database helpers, inventory scanner setup,
-          and Kakao MCP helpers for channel and bot management.
+          This workspace shows the generated EGDesk integration surface: database helpers, PageIndex,
+          Gemini key config, Korean law, SEO, local agent AI, FinanceHub, internal knowledge, browser recording, SSL,
+          inventory scanner setup, and Kakao MCP helpers.
         </p>
       </section>
 
       <section style={gridStyle} aria-label="Demo pages">
-        {pages.map((page) => (
+        {DEMO_PAGES.map((page) => (
           <a key={page.href} href={`${basePath}${page.href}`} style={cardStyle}>
             <span style={cardEyebrowStyle}>{page.eyebrow}</span>
             <strong style={cardTitleStyle}>{page.title}</strong>
