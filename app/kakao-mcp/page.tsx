@@ -3,6 +3,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch, getEgdeskBasePath } from '@/lib/api';
+import { getDemoNavLinks } from '@/lib/demo-pages';
 
 // ── Tool definitions ────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ type ToolDef = {
   title: string;
   description: string;
   fields: FieldDef[];
-  category: 'login' | 'channels' | 'bots' | 'advanced';
+  category: 'login' | 'channels' | 'bots' | 'webhooks' | 'advanced';
   internal?: boolean;
 };
 
@@ -136,12 +137,12 @@ const TOOLS: ToolDef[] = [
   {
     name: 'kakao_create_bot',
     title: 'Create bot',
-    description: 'Create a chatbot, bind it to a channel, and deploy the skill.',
+    description: 'Create a chatbot and point its skill URL at EGDesk tunnel or your own server base URL.',
     category: 'bots',
     fields: [
       { name: 'botName', label: 'Bot name', type: 'string', required: true, placeholder: 'Demo Support Bot' },
       { name: 'channelSearchId', label: 'Channel search ID', type: 'string', required: true, placeholder: '@demo-support' },
-      { name: 'skillUrl', label: 'Skill URL (optional)', type: 'string', placeholder: 'https://your-url/kakao/skill' },
+      { name: 'skillUrl', label: 'Your server base URL (optional)', type: 'string', placeholder: 'https://your-app.com' },
       { name: 'reuseExisting', label: 'Reuse if already exists', type: 'boolean', defaultValue: true },
     ],
   },
@@ -153,6 +154,13 @@ const TOOLS: ToolDef[] = [
     fields: [
       { name: 'enrichDetails', label: 'Include channel details', type: 'boolean', defaultValue: true },
     ],
+  },
+  {
+    name: 'kakao_get_webhook_info',
+    title: 'Webhook setup guide',
+    description: 'URLs, API key, channel/user identity, and how to run your own AI backend (not only OpenClaw).',
+    category: 'webhooks',
+    fields: [],
   },
   {
     name: 'kakao_check_callback_statuses',
@@ -190,6 +198,7 @@ const RUNNING_HINTS: Record<string, string> = {
   kakao_create_channel: 'Headless Chrome → creating channel on business.kakao.com…',
   kakao_create_bot: 'Headless Chrome → creating bot on chatbot.kakao.com (can take several minutes)…',
   kakao_list_resources: 'Headless Chrome → listing channels and bots…',
+  kakao_get_webhook_info: 'Loading webhook URLs and BYO setup guide…',
   kakao_check_callback_statuses: 'Checking webhook configuration…',
   kakao_repair_callback_setup: 'Repairing webhook setup and redeploying…',
 };
@@ -198,6 +207,7 @@ const CATEGORIES = [
   { key: 'login', label: 'Login' },
   { key: 'channels', label: 'Channels' },
   { key: 'bots', label: 'Bots' },
+  { key: 'webhooks', label: 'Webhooks' },
   { key: 'advanced', label: 'Advanced' },
 ] as const;
 
@@ -251,8 +261,7 @@ export default function KakaoPlayground() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
   const [landingHref, setLandingHref] = useState('/');
-  const [dbHref, setDbHref] = useState('/database');
-  const [inventoryHref, setInventoryHref] = useState('/inventory-mcp');
+  const [navLinks, setNavLinks] = useState<{ href: string; label: string }[]>([]);
   const nextId = useRef(1);
 
   const [loginPolling, setLoginPolling] = useState(false);
@@ -281,8 +290,7 @@ export default function KakaoPlayground() {
   useEffect(() => {
     const bp = getEgdeskBasePath();
     setLandingHref(bp || '/');
-    setDbHref(`${bp}/database`);
-    setInventoryHref(`${bp}/inventory-mcp`);
+    setNavLinks(getDemoNavLinks(bp, '/kakao-mcp'));
   }, []);
 
   // Pre-fill create-bot channel from selected channel
@@ -570,8 +578,9 @@ export default function KakaoPlayground() {
       <header style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
           <a href={landingHref} style={navLinkStyle}>Back to landing</a>
-          <a href={dbHref} style={navLinkStyle}>Database demo</a>
-          <a href={inventoryHref} style={navLinkStyle}>Inventory MCP</a>
+          {navLinks.map(link => (
+            <a key={link.href} href={link.href} style={navLinkStyle}>{link.label}</a>
+          ))}
         </div>
         <div style={eyebrowStyle}>EGDesk Kakao MCP</div>
         <h1 style={titleStyle}>Kakao Playground</h1>
@@ -952,8 +961,13 @@ function DisplayResultView({ data, tool, selectedChannelSearchId, onSelectChanne
 
   const hasQr = typeof data.qrImageDataUrl === 'string' && data.qrImageDataUrl.startsWith('data:');
   const hasLoginFields = data.status && tool.includes('login');
+  const isWebhookInfo = Array.isArray(data.setupModes) && data.identity;
   const channels = Array.isArray(data.channels) ? data.channels : null;
   const bots = Array.isArray(data.bots) ? data.bots : null;
+
+  if (isWebhookInfo) {
+    return <WebhookInfoView data={data} />;
+  }
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -1100,6 +1114,87 @@ function DisplayResultView({ data, tool, selectedChannelSearchId, onSelectChanne
       {/* Fallback key-value for other structured fields */}
       {!hasQr && !channels?.length && !bots?.length && !hasLoginFields && (
         <KeyValueFallback data={data} />
+      )}
+    </div>
+  );
+}
+
+function WebhookInfoView({ data }: { data: Record<string, any> }) {
+  const copy = (text: string) => {
+    if (typeof navigator !== 'undefined') navigator.clipboard.writeText(text).catch(() => {});
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <p style={{ color: '#374151', fontSize: 14, margin: 0, lineHeight: 1.6 }}>
+        Build your own AI chatbot — EGDesk configures Kakao; your app handles incoming messages.
+      </p>
+
+      <div>
+        <div style={miniLabelStyle}>Authentication</div>
+        <dl style={kvGridStyle}>
+          <dt style={kvTermStyle}>Header</dt>
+          <dd style={kvDescStyle}>{data.apiKeyHeader}</dd>
+          <dt style={kvTermStyle}>API key</dt>
+          <dd style={kvDescStyle}>
+            <code style={inlineCodeStyle}>{data.apiKey || '(start MCP tunnel in EGDesk)'}</code>
+            {data.apiKey ? (
+              <button type="button" style={{ ...secondaryBtnStyle, marginLeft: 8, fontSize: 12 }} onClick={() => copy(data.apiKey)}>Copy</button>
+            ) : null}
+          </dd>
+        </dl>
+      </div>
+
+      {data.endpoints && (
+        <div>
+          <div style={miniLabelStyle}>EGDesk tunnel endpoints</div>
+          <dl style={kvGridStyle}>
+            {Object.entries(data.endpoints as Record<string, string | null>).map(([k, v]) => v ? (
+              <span key={k} style={{ display: 'contents' }}>
+                <dt style={kvTermStyle}>{k}</dt>
+                <dd style={kvDescStyle}>
+                  <code style={inlineCodeStyle}>{v}</code>
+                  <button type="button" style={{ ...secondaryBtnStyle, marginLeft: 8, fontSize: 12 }} onClick={() => copy(v)}>Copy</button>
+                </dd>
+              </span>
+            ) : null)}
+          </dl>
+          {!data.tunnelPublicUrl && (
+            <p style={{ color: '#92400e', fontSize: 13, margin: '8px 0 0' }}>No tunnel URL — use your own server base URL in Create bot.</p>
+          )}
+        </div>
+      )}
+
+      <div>
+        <div style={miniLabelStyle}>Relay (skill URL on EGDesk tunnel)</div>
+        <p style={{ color: '#6b7280', fontSize: 13, margin: '0 0 8px' }}>
+          Forwards to: <code style={inlineCodeStyle}>{data.skillRelayUrl}</code>
+          {data.skillRelaySource === 'openclaw-default' ? ' (OpenClaw — set kakaoSkillRelayUrl for BYO)' : ''}
+        </p>
+      </div>
+
+      {Array.isArray(data.setupModes) && data.setupModes.map((mode: any) => (
+        <div key={mode.id} style={{ padding: 12, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{mode.title}</div>
+          <p style={{ color: '#4b5563', fontSize: 13, margin: '0 0 6px', lineHeight: 1.5 }}>{mode.description}</p>
+          {mode.skillUrlExample ? <code style={{ ...inlineCodeStyle, wordBreak: 'break-all' }}>{mode.skillUrlExample}</code> : null}
+        </div>
+      ))}
+
+      {data.identity && (
+        <div>
+          <div style={miniLabelStyle}>Identity fields</div>
+          <dl style={kvGridStyle}>
+            <dt style={kvTermStyle}>Channel</dt>
+            <dd style={kvDescStyle}>{data.identity.channel.fromHeaders.join(', ')} · path {data.identity.channel.fromUrlPath}</dd>
+            <dt style={kvTermStyle}>User</dt>
+            <dd style={kvDescStyle}>{data.identity.user.fields[0]} …</dd>
+            <dt style={kvTermStyle}>Session</dt>
+            <dd style={kvDescStyle}><code style={inlineCodeStyle}>{data.identity.user.sessionKeyFormat}</code></dd>
+            <dt style={kvTermStyle}>Message</dt>
+            <dd style={kvDescStyle}><code style={inlineCodeStyle}>{data.identity.message.field}</code></dd>
+          </dl>
+        </div>
       )}
     </div>
   );
