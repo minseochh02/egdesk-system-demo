@@ -85,6 +85,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['inventory_setup_scanner', 'YOLO', 'DINO'],
   },
   {
+    title: 'Pub/Sub Events',
+    description: 'Connect to real-time SSE stream and watch user-data change events as they happen. Trigger mutations to test.',
+    href: '/pubsub',
+    eyebrow: 'Real-time',
+    items: ['onUserDataChanged', 'SSE', 'insert', 'update', 'delete'],
+  },
+  {
     title: 'Kakao MCP Guide',
     description: 'Review every Kakao Channel MCP tool with helper examples, raw calls, inputs, and setup notes.',
     href: '/kakao-mcp',

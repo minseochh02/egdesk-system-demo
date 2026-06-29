@@ -211,9 +211,30 @@ type HistoryEntry = {
   durationMs: number;
 };
 
+// ── Pub/Sub types ──────────────────────────────────────────────────────────
+
+interface UserDataChangeEvent {
+  kind: 'schema' | 'data';
+  action: 'create_table' | 'delete_table' | 'rename_table' | 'insert' | 'update' | 'delete';
+  tableName?: string;
+  tableId?: string;
+  source?: 'mcp' | 'ipc' | 'sync' | 'import';
+}
+
+interface PubSubNotification {
+  id: number;
+  title: string;
+  body: string;
+  time: string;
+  action: string;
+}
+
+type TabKey = 'playground' | 'realtime';
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function DatabasePlayground() {
+  const [activeTab, setActiveTab] = useState<TabKey>('playground');
   const [tables, setTables] = useState<TableMeta[]>([]);
   const [metaError, setMetaError] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -225,6 +246,17 @@ export default function DatabasePlayground() {
   const [landingHref, setLandingHref] = useState('/');
   const [navLinks, setNavLinks] = useState<{ href: string; label: string }[]>([]);
   const nextId = useRef(1);
+
+  // Pub/Sub state
+  const [sseConnected, setSseConnected] = useState(false);
+  const [notifications, setNotifications] = useState<PubSubNotification[]>([]);
+  const [orderName, setOrderName] = useState('');
+  const [orderAmount, setOrderAmount] = useState('');
+  const [orderStatus, setOrderStatus] = useState('pending');
+  const [orderSubmitting, setOrderSubmitting] = useState(false);
+  const [orderMessage, setOrderMessage] = useState<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const notifIdCounter = useRef(0);
 
   const loadMeta = useCallback(async () => {
     setMetaError(null);
@@ -245,6 +277,77 @@ export default function DatabasePlayground() {
     setNavLinks(getDemoNavLinks(bp, '/database'));
     loadMeta();
   }, [loadMeta]);
+
+  // ── Pub/Sub SSE logic ──────────────────────────────────────────────────────
+
+  const connectSSE = useCallback(() => {
+    if (eventSourceRef.current) eventSourceRef.current.close();
+    const apiUrl = process.env.NEXT_PUBLIC_EGDESK_API_URL || 'http://localhost:8080';
+    const es = new EventSource(`${apiUrl}/user-data/sse`);
+    eventSourceRef.current = es;
+
+    es.addEventListener('message', (e: MessageEvent) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.method !== 'egdesk/user-data-changed') return;
+        const evt: UserDataChangeEvent = msg.params;
+        const id = ++notifIdCounter.current;
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const table = evt.tableName || 'unknown';
+        let title = 'Data changed';
+        if (evt.action === 'insert') title = 'New order received';
+        else if (evt.action === 'update') title = 'Order updated';
+        else if (evt.action === 'delete') title = 'Order removed';
+        else if (evt.action === 'create_table') title = 'Table created';
+        setNotifications((prev) => [{ id, title, body: `${evt.action} on "${table}"`, time, action: evt.action }, ...prev].slice(0, 20));
+      } catch { /* ignore */ }
+    });
+
+    es.addEventListener('connected', () => setSseConnected(true));
+    es.addEventListener('open', () => setSseConnected(true));
+    es.addEventListener('error', () => setSseConnected(false));
+  }, []);
+
+  const disconnectSSE = useCallback(() => {
+    if (eventSourceRef.current) { eventSourceRef.current.close(); eventSourceRef.current = null; }
+    setSseConnected(false);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (eventSourceRef.current) eventSourceRef.current.close(); };
+  }, []);
+
+  const handleSubmitOrder = async () => {
+    if (!orderName.trim()) return;
+    setOrderSubmitting(true);
+    setOrderMessage(null);
+    try {
+      const res = await apiFetch('/__user_data_proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool: 'user_data_insert_rows',
+          arguments: {
+            tableName: 'orders',
+            rows: [{ customer_name: orderName.trim(), amount: orderAmount || '0', status: orderStatus, created_at: new Date().toISOString() }],
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data?.success || data?.result) {
+        setOrderMessage('Order saved!');
+        setOrderName('');
+        setOrderAmount('');
+      } else {
+        setOrderMessage(`Error: ${data?.error || 'Unknown'}`);
+      }
+    } catch (err: any) {
+      setOrderMessage(`Error: ${err.message}`);
+    }
+    setOrderSubmitting(false);
+  };
+
+  // ── End Pub/Sub logic ──────────────────────────────────────────────────────
 
   useEffect(() => {
     const defaults: Record<string, string> = {};
@@ -408,6 +511,23 @@ export default function DatabasePlayground() {
         </p>
       </header>
 
+      {/* ── Tab bar ────────────────────────────────────────────────── */}
+      <div style={tabBarStyle}>
+        <button
+          onClick={() => setActiveTab('playground')}
+          style={{ ...tabBtnStyle, ...(activeTab === 'playground' ? tabBtnActiveStyle : {}) }}
+        >
+          Query Playground
+        </button>
+        <button
+          onClick={() => setActiveTab('realtime')}
+          style={{ ...tabBtnStyle, ...(activeTab === 'realtime' ? tabBtnActiveStyle : {}) }}
+        >
+          Real-Time Events
+        </button>
+      </div>
+
+      {activeTab === 'playground' && (<>
       <div style={sessionBarStyle}>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={miniLabelStyle}>Configured tables</div>
@@ -654,6 +774,134 @@ export default function DatabasePlayground() {
           )}
         </div>
       </div>
+      </>)}
+
+      {/* ── Real-Time Events tab ────────────────────────────────────── */}
+      {activeTab === 'realtime' && (
+        <div style={{ display: 'grid', gap: 20 }}>
+          {/* SSE connection bar */}
+          <div style={sessionBarStyle}>
+            <div style={{ flex: 1 }}>
+              <div style={miniLabelStyle}>SSE connection</div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: sseConnected ? '#047857' : '#6b7280', margin: '4px 0 0' }}>
+                {sseConnected ? 'Connected — listening for events' : 'Disconnected'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {!sseConnected ? (
+                <button onClick={connectSSE} style={runBtnStyle}>Connect</button>
+              ) : (
+                <button onClick={disconnectSSE} style={secondaryBtnStyle}>Disconnect</button>
+              )}
+            </div>
+          </div>
+
+          {/* Split-screen: Desktop + Mobile */}
+          <div style={splitScreenStyle}>
+            {/* Desktop frame — order form */}
+            <div style={desktopFrameStyle}>
+              <div style={desktopTitleBarStyle}>
+                <span style={desktopDotStyle('#ef4444')} />
+                <span style={desktopDotStyle('#f59e0b')} />
+                <span style={desktopDotStyle('#22c55e')} />
+                <span style={{ marginLeft: 10, fontSize: 12, color: '#6b7280', fontWeight: 600 }}>EGDesk — Orders</span>
+              </div>
+              <div style={{ padding: 20 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 14px' }}>New Order</h3>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div>
+                    <label style={labelStyle}>Customer name *</label>
+                    <input
+                      type="text"
+                      value={orderName}
+                      onChange={e => setOrderName(e.target.value)}
+                      placeholder="Kim Minseo"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Amount</label>
+                    <input
+                      type="text"
+                      value={orderAmount}
+                      onChange={e => setOrderAmount(e.target.value)}
+                      placeholder="50000"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Status</label>
+                    <select value={orderStatus} onChange={e => setOrderStatus(e.target.value)} style={inputStyle}>
+                      <option value="pending">Pending</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="shipped">Shipped</option>
+                    </select>
+                  </div>
+                  <button
+                    onClick={handleSubmitOrder}
+                    disabled={orderSubmitting || !orderName.trim()}
+                    style={{ ...runBtnStyle, marginTop: 4, opacity: (!orderName.trim() || orderSubmitting) ? 0.5 : 1 }}
+                  >
+                    {orderSubmitting ? 'Saving…' : 'Insert order'}
+                  </button>
+                  {orderMessage && (
+                    <p style={{ fontSize: 13, color: orderMessage.startsWith('Error') ? '#dc2626' : '#047857', margin: 0 }}>
+                      {orderMessage}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Arrow */}
+            <div style={arrowStyle}>
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                <path d="M8 20H32M32 20L24 12M32 20L24 28" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>SSE push</span>
+            </div>
+
+            {/* Phone frame — notifications */}
+            <div style={phoneFrameStyle}>
+              <div style={phoneNotchStyle} />
+              <div style={phoneStatusBarStyle}>
+                <span style={{ fontSize: 11, fontWeight: 600 }}>9:41</span>
+                <span style={{ fontSize: 11 }}>EGDesk</span>
+              </div>
+              <div style={phoneContentStyle}>
+                {notifications.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: '40px 16px' }}>
+                    {sseConnected ? 'Waiting for events…' : 'Connect SSE to see push notifications'}
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {notifications.map(n => (
+                      <div key={n.id} style={notifCardStyle}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{n.title}</span>
+                          <span style={{ fontSize: 10, color: '#9ca3af' }}>{n.time}</span>
+                        </div>
+                        <p style={{ fontSize: 11, color: '#6b7280', margin: '3px 0 0' }}>{n.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Info panel */}
+          <div style={infoPanelStyle}>
+            <strong style={{ fontSize: 13, color: '#1e40af' }}>How real-time events work</strong>
+            <ol style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13, color: '#1e40af', lineHeight: 1.65 }}>
+              <li>Insert an order using the form above (or the Query Playground tab)</li>
+              <li>EGDesk broadcasts <code style={inlineCodeStyle}>egdesk/user-data-changed</code> via SSE</li>
+              <li>The phone receives a push-style notification in real time</li>
+              <li>In production, use <code style={inlineCodeStyle}>onUserDataChanged()</code> from egdesk-helpers</li>
+            </ol>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -1147,4 +1395,114 @@ const tdStyle: React.CSSProperties = {
   padding: '8px 10px',
   borderBottom: '1px solid #f3f4f6',
   color: '#111827',
+};
+
+// ── Tab bar styles ──────────────────────────────────────────────────────────
+
+const tabBarStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 0,
+  marginBottom: 20,
+  borderBottom: '2px solid #e5e7eb',
+};
+
+const tabBtnStyle: React.CSSProperties = {
+  padding: '10px 20px',
+  fontSize: 14,
+  fontWeight: 600,
+  color: '#6b7280',
+  background: 'transparent',
+  border: 'none',
+  borderBottom: '2px solid transparent',
+  marginBottom: -2,
+  cursor: 'pointer',
+};
+
+const tabBtnActiveStyle: React.CSSProperties = {
+  color: '#047857',
+  borderBottomColor: '#047857',
+};
+
+// ── Real-time tab styles ────────────────────────────────────────────────────
+
+const splitScreenStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 24,
+  flexWrap: 'wrap',
+};
+
+const desktopFrameStyle: React.CSSProperties = {
+  width: 360,
+  background: '#fff',
+  border: '1px solid #d1d5db',
+  borderRadius: 10,
+  overflow: 'hidden',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+};
+
+const desktopTitleBarStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '10px 14px',
+  background: '#f3f4f6',
+  borderBottom: '1px solid #e5e7eb',
+};
+
+const desktopDotStyle = (color: string): React.CSSProperties => ({
+  width: 10,
+  height: 10,
+  borderRadius: '50%',
+  background: color,
+});
+
+const arrowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 4,
+};
+
+const phoneFrameStyle: React.CSSProperties = {
+  width: 280,
+  height: 500,
+  background: '#fff',
+  border: '3px solid #1f2937',
+  borderRadius: 32,
+  overflow: 'hidden',
+  display: 'flex',
+  flexDirection: 'column',
+  boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
+};
+
+const phoneNotchStyle: React.CSSProperties = {
+  width: 100,
+  height: 6,
+  background: '#1f2937',
+  borderRadius: 3,
+  margin: '8px auto 0',
+};
+
+const phoneStatusBarStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  padding: '8px 20px 6px',
+  fontSize: 11,
+  fontWeight: 600,
+  color: '#374151',
+};
+
+const phoneContentStyle: React.CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+  padding: '8px 12px',
+};
+
+const notifCardStyle: React.CSSProperties = {
+  background: '#f9fafb',
+  border: '1px solid #e5e7eb',
+  borderRadius: 10,
+  padding: '10px 12px',
 };
