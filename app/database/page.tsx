@@ -322,11 +322,11 @@ export default function DatabasePlayground() {
     setOrderSubmitting(true);
     setOrderMessage(null);
     try {
-      const res = await apiFetch('/__user_data_proxy', {
+      const res = await apiFetch('/api/database', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tool: 'user_data_insert_rows',
+          helper: 'insertRows',
           arguments: {
             tableName: 'orders',
             rows: [{ customer_name: orderName.trim(), amount: orderAmount || '0', status: orderStatus, created_at: new Date().toISOString() }],
@@ -334,7 +334,7 @@ export default function DatabasePlayground() {
         }),
       });
       const data = await res.json();
-      if (data?.success || data?.result) {
+      if (data?.success) {
         setOrderMessage('Order saved!');
         setOrderName('');
         setOrderAmount('');
@@ -1420,7 +1420,7 @@ const tabBtnStyle: React.CSSProperties = {
 
 const tabBtnActiveStyle: React.CSSProperties = {
   color: '#047857',
-  borderBottomColor: '#047857',
+  borderBottom: '2px solid #047857',
 };
 
 // ── Real-time tab styles ────────────────────────────────────────────────────
