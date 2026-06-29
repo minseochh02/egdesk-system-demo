@@ -868,7 +868,13 @@ export default function DatabasePlayground() {
               <div style={phoneNotchStyle} />
               <div style={phoneStatusBarStyle}>
                 <span style={{ fontSize: 11, fontWeight: 600 }}>9:41</span>
-                <span style={{ fontSize: 11 }}>EGDesk</span>
+                <button
+                  onClick={() => window.open(`${getEgdeskBasePath()}/pubsub`, '_blank', 'width=420,height=700')}
+                  style={openTabBtnStyle}
+                  title="Open in separate window"
+                >
+                  &#8599;
+                </button>
               </div>
               <div style={phoneContentStyle}>
                 {notifications.length === 0 ? (
@@ -1507,4 +1513,15 @@ const notifCardStyle: React.CSSProperties = {
   border: '1px solid #e5e7eb',
   borderRadius: 10,
   padding: '10px 12px',
+};
+
+const openTabBtnStyle: React.CSSProperties = {
+  background: 'none',
+  border: '1px solid #d1d5db',
+  borderRadius: 4,
+  fontSize: 12,
+  lineHeight: 1,
+  padding: '2px 5px',
+  cursor: 'pointer',
+  color: '#6b7280',
 };
