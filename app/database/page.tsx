@@ -283,7 +283,9 @@ export default function DatabasePlayground() {
   const connectSSE = useCallback(() => {
     if (eventSourceRef.current) eventSourceRef.current.close();
     const apiUrl = process.env.NEXT_PUBLIC_EGDESK_API_URL || 'http://localhost:8080';
-    const es = new EventSource(`${apiUrl}/user-data/sse`);
+    const apiKey = process.env.NEXT_PUBLIC_EGDESK_API_KEY || '';
+    const sseUrl = apiKey ? `${apiUrl}/user-data/sse?key=${encodeURIComponent(apiKey)}` : `${apiUrl}/user-data/sse`;
+    const es = new EventSource(sseUrl);
     eventSourceRef.current = es;
 
     es.addEventListener('message', (e: MessageEvent) => {
