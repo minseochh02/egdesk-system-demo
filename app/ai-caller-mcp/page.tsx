@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { listAiCallerModels } from '@/egdesk-helpers';
+import { apiFetch } from '@/lib/api';
+import { parseMcpResult } from '@/lib/mcp-utils';
 import {
   McpPlayground,
   playgroundStyles,
@@ -185,7 +186,15 @@ export default function AiCallerPlayground() {
 
     const loadModels = async () => {
       try {
-        const parsed = await listAiCallerModels();
+        const res = await apiFetch('/api/ai-caller', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: 'ai_caller_list_models',
+            arguments: {},
+          }),
+        });
+        const parsed = parseMcpResult(await res.json());
         if (cancelled) return;
 
         const models = Array.isArray(parsed?.models)
