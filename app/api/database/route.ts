@@ -18,6 +18,11 @@ import {
   deleteRows,
   aggregateTable,
   executeSQL,
+  uploadFile,
+  downloadFile,
+  deleteFile,
+  listFiles,
+  getFileStats,
 } from '../../../egdesk-helpers';
 
 type HelperArgs = Record<string, any>;
@@ -65,6 +70,35 @@ async function runHelper(helper: string, args: HelperArgs) {
 
     case 'executeSQL':
       return executeSQL(args.query);
+
+    case 'uploadFile':
+      return uploadFile(args.tableName, args.rowId, args.columnName, args.filename, args.data, {
+        mimeType: args.mimeType,
+        forceStorageType: args.forceStorageType,
+        compress: args.compress,
+      });
+
+    case 'downloadFile':
+      return downloadFile({
+        fileId: args.fileId,
+        tableId: args.tableName,
+        rowId: args.rowId,
+        columnName: args.columnName,
+      });
+
+    case 'deleteFile':
+      return deleteFile({
+        fileId: args.fileId,
+        tableId: args.tableName,
+        rowId: args.rowId,
+        columnName: args.columnName,
+      });
+
+    case 'listFiles':
+      return listFiles(args.tableName, args.rowId);
+
+    case 'getFileStats':
+      return getFileStats(args.tableName);
 
     default:
       throw new Error(`Unknown helper: ${helper}`);
