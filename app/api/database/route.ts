@@ -18,9 +18,7 @@ import {
   deleteRows,
   aggregateTable,
   executeSQL,
-  uploadFile,
-  deleteFile,
-  getFileStats,
+  callUserDataTool,
 } from '../../../egdesk-helpers';
 
 type HelperArgs = Record<string, any>;
@@ -80,7 +78,9 @@ async function runHelper(helper: string, args: HelperArgs) {
       // 2. Get the new row ID from the insert result
       const rowId = inserted?.insertedIds?.[0] ?? inserted?.lastInsertRowid ?? 1;
       // 3. Upload the file blob attached to that row
-      const upload = await uploadFile('images', rowId, 'file', args.filename, args.data, {
+      const upload = await callUserDataTool('user_data_upload_file', {
+        tableName: 'images', rowId, columnName: 'file',
+        filename: args.filename, data: args.data,
         mimeType: args.mimeType,
       });
       return { rowId, upload };
@@ -91,12 +91,12 @@ async function runHelper(helper: string, args: HelperArgs) {
 
     case 'deleteImage': {
       // Delete the file blob first, then remove the row
-      await deleteFile({ tableId: 'images', rowId: args.rowId, columnName: 'file' });
+      await callUserDataTool('user_data_delete_file', { tableName: 'images', rowId: args.rowId, columnName: 'file' });
       return deleteRows('images', { ids: [args.rowId] });
     }
 
     case 'getFileStats':
-      return getFileStats('images');
+      return callUserDataTool('user_data_get_file_stats', { tableName: 'images' });
 
     default:
       throw new Error(`Unknown helper: ${helper}`);
