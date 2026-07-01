@@ -50,6 +50,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['getLocalAgentStatus', 'callLocalAgent', 'pullLocalAgentModel'],
   },
   {
+    title: 'AI Caller MCP',
+    description: 'Call Gemini with automatic token usage tracking. View aggregated stats and raw call logs.',
+    href: '/ai-caller-mcp',
+    eyebrow: 'Gemini + tracking',
+    items: ['callAiCaller', 'getAiCallerUsage', 'getAiCallerLogs'],
+  },
+  {
     title: 'FinanceHub MCP',
     description: 'Query synced bank accounts, transactions, monthly summaries, and Hometax tax invoices.',
     href: '/financehub-mcp',
@@ -83,13 +90,6 @@ export const DEMO_PAGES: DemoPageLink[] = [
     href: '/inventory-mcp',
     eyebrow: 'Inventory scanner',
     items: ['inventory_setup_scanner', 'YOLO', 'DINO'],
-  },
-  {
-    title: 'Pub/Sub Events',
-    description: 'Connect to real-time SSE stream and watch user-data change events as they happen. Trigger mutations to test.',
-    href: '/pubsub',
-    eyebrow: 'Real-time',
-    items: ['onUserDataChanged', 'SSE', 'insert', 'update', 'delete'],
   },
   {
     title: 'Kakao MCP Guide',
