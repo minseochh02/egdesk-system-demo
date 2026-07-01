@@ -10,6 +10,7 @@ import {
 } from '@/components/mcp-playground';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_KEY_PLACEHOLDER = 'Default key (EGDesk preference)';
 
 const BASE_TOOLS: PlaygroundToolDef[] = [
   {
@@ -25,6 +26,7 @@ const BASE_TOOLS: PlaygroundToolDef[] = [
         type: 'textarea',
         required: true,
         placeholder: 'Summarize the benefits of token usage tracking in one paragraph.',
+        usePlaceholderWhenEmpty: true,
       },
       {
         name: 'systemPrompt',
@@ -41,6 +43,16 @@ const BASE_TOOLS: PlaygroundToolDef[] = [
         usePlaceholderWhenEmpty: true,
         defaultValue: '',
         hint: 'Loading available Gemini models from EGDesk…',
+      },
+      {
+        name: 'keyName',
+        label: 'API key',
+        type: 'select',
+        options: [],
+        placeholder: DEFAULT_KEY_PLACEHOLDER,
+        usePlaceholderWhenEmpty: false,
+        defaultValue: '',
+        hint: 'Loading Google API keys from EGDesk AI Keys Manager…',
       },
       {
         name: 'temperature',
@@ -139,11 +151,14 @@ const RUNNING_HINTS: Record<string, string> = {
   ai_caller_get_logs: 'Fetching call logs...',
 };
 
-function withModelOptions(
+function withPlaygroundOptions(
   tools: PlaygroundToolDef[],
   models: string[],
   defaultModel: string,
   modelsError: string | null,
+  apiKeyNames: string[],
+  apiKeysError: string | null,
+  preferredKeyName: string | null,
 ): PlaygroundToolDef[] {
   const modelHint = modelsError
     ? `${modelsError} Leave on default to use ${defaultModel}.`
@@ -151,52 +166,101 @@ function withModelOptions(
       ? `Loaded ${models.length} Gemini models from EGDesk. Leave on default to use ${defaultModel}.`
       : `No models returned from EGDesk. Leave on default to use ${defaultModel}.`;
 
+  const keyHint = apiKeysError
+    ? `${apiKeysError} Leave on default to use EGDesk's preferred Google key.`
+    : apiKeyNames.length
+      ? preferredKeyName
+        ? `Loaded ${apiKeyNames.length} Google key(s). Default uses "${preferredKeyName}" (EGDesk preference).`
+        : `Loaded ${apiKeyNames.length} Google key(s) from AI Keys Manager. Leave on default for EGDesk preference.`
+      : 'No named Google keys in AI Keys Manager. Leave on default to use env var or preferred key.';
+
   return tools.map(tool => ({
     ...tool,
     fields: tool.fields.map(field => {
-      if (field.name !== 'model' || field.type !== 'select') {
-        return field;
-      }
+      if (field.name === 'model' && field.type === 'select') {
+        if (tool.name === 'ai_caller_call') {
+          return {
+            ...field,
+            options: models,
+            placeholder: defaultModel,
+            hint: modelHint,
+          };
+        }
 
-      if (tool.name === 'ai_caller_call') {
         return {
           ...field,
-          options: models,
-          placeholder: defaultModel,
-          hint: modelHint,
+          options: ['', ...models],
+          hint: models.length ? `${models.length} models loaded from EGDesk.` : undefined,
         };
       }
 
-      return {
-        ...field,
-        options: ['', ...models],
-        hint: models.length ? `${models.length} models loaded from EGDesk.` : undefined,
-      };
+      if (field.name === 'keyName' && field.type === 'select' && tool.name === 'ai_caller_call') {
+        return {
+          ...field,
+          options: ['', ...apiKeyNames],
+          placeholder: DEFAULT_KEY_PLACEHOLDER,
+          hint: keyHint,
+        };
+      }
+
+      return field;
     }),
   }));
+}
+
+function extractGoogleKeyNames(parsed: any): { names: string[]; preferredName: string | null } {
+  const keys = Array.isArray(parsed?.keys) ? parsed.keys : [];
+  const names = keys
+    .map((key: any) => (typeof key?.name === 'string' ? key.name.trim() : ''))
+    .filter((name: string) => name.length > 0);
+
+  const preferredId = typeof parsed?.preferredKeyId === 'string' ? parsed.preferredKeyId : null;
+  const preferred = preferredId
+    ? keys.find((key: any) => key?.id === preferredId)
+    : keys.find((key: any) => key?.isPreferred === true);
+  const preferredName =
+    typeof preferred?.name === 'string' && preferred.name.trim()
+      ? preferred.name.trim()
+      : null;
+
+  return { names, preferredName };
 }
 
 export default function AiCallerPlayground() {
   const [geminiModels, setGeminiModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState(DEFAULT_GEMINI_MODEL);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [apiKeyNames, setApiKeyNames] = useState<string[]>([]);
+  const [preferredKeyName, setPreferredKeyName] = useState<string | null>(null);
+  const [apiKeysError, setApiKeysError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadModels = async () => {
-      try {
-        const res = await apiFetch('/api/ai-caller', {
+    const loadOptions = async () => {
+      const [modelsResult, keysResult] = await Promise.allSettled([
+        apiFetch('/api/ai-caller', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tool: 'ai_caller_list_models',
             arguments: {},
           }),
-        });
-        const parsed = parseMcpResult(await res.json());
-        if (cancelled) return;
+        }).then(async (res) => parseMcpResult(await res.json())),
+        apiFetch('/api/egdesk-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: 'egdesk_list_gemini_keys',
+            arguments: {},
+          }),
+        }).then(async (res) => parseMcpResult(await res.json())),
+      ]);
 
+      if (cancelled) return;
+
+      if (modelsResult.status === 'fulfilled') {
+        const parsed = modelsResult.value;
         const models = Array.isArray(parsed?.models)
           ? parsed.models.filter((model: unknown) => typeof model === 'string')
           : [];
@@ -210,15 +274,29 @@ export default function AiCallerPlayground() {
           models.includes(resolvedDefault) ? resolvedDefault : models[0] ?? resolvedDefault,
         );
         setModelsError(null);
-      } catch (error: any) {
-        if (cancelled) return;
+      } else {
         setGeminiModels([]);
         setDefaultModel(DEFAULT_GEMINI_MODEL);
-        setModelsError(error?.message || 'Could not load Gemini models from EGDesk.');
+        setModelsError(
+          modelsResult.reason?.message || 'Could not load Gemini models from EGDesk.',
+        );
+      }
+
+      if (keysResult.status === 'fulfilled') {
+        const { names, preferredName } = extractGoogleKeyNames(keysResult.value);
+        setApiKeyNames(names);
+        setPreferredKeyName(preferredName);
+        setApiKeysError(null);
+      } else {
+        setApiKeyNames([]);
+        setPreferredKeyName(null);
+        setApiKeysError(
+          keysResult.reason?.message || 'Could not load Google API keys from EGDesk.',
+        );
       }
     };
 
-    void loadModels();
+    void loadOptions();
 
     return () => {
       cancelled = true;
@@ -226,8 +304,17 @@ export default function AiCallerPlayground() {
   }, []);
 
   const tools = useMemo(
-    () => withModelOptions(BASE_TOOLS, geminiModels, defaultModel, modelsError),
-    [geminiModels, defaultModel, modelsError],
+    () =>
+      withPlaygroundOptions(
+        BASE_TOOLS,
+        geminiModels,
+        defaultModel,
+        modelsError,
+        apiKeyNames,
+        apiKeysError,
+        preferredKeyName,
+      ),
+    [geminiModels, defaultModel, modelsError, apiKeyNames, apiKeysError, preferredKeyName],
   );
 
   const renderDisplay = (data: any, tool: string) => {
@@ -262,6 +349,21 @@ export default function AiCallerPlayground() {
                 <dd style={kvDescStyle}>{data.usage.totalTokens}</dd>
                 <dt style={kvTermStyle}>Duration</dt>
                 <dd style={kvDescStyle}>{data.usage.durationMs}ms</dd>
+              </dl>
+            </>
+          )}
+          {data.apiKey?.name && (
+            <>
+              <div style={miniLabelStyle}>API Key Used</div>
+              <dl style={kvGridStyle}>
+                <dt style={kvTermStyle}>Key name</dt>
+                <dd style={kvDescStyle}>{data.apiKey.name}</dd>
+                {data.apiKey.id && (
+                  <>
+                    <dt style={kvTermStyle}>Key ID</dt>
+                    <dd style={kvDescStyle}>{data.apiKey.id}</dd>
+                  </>
+                )}
               </dl>
             </>
           )}

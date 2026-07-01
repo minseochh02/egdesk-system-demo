@@ -67,6 +67,18 @@ export type McpPlaygroundProps = {
   runButtonLabel?: (tool: PlaygroundToolDef) => string;
 };
 
+function resolveFieldRaw(
+  field: PlaygroundFieldDef,
+  value: string | undefined,
+): string | undefined {
+  const trimmed = value?.trim() ?? '';
+  if (trimmed) return trimmed;
+  if (field.usePlaceholderWhenEmpty && field.placeholder?.trim()) {
+    return field.placeholder.trim();
+  }
+  return undefined;
+}
+
 function buildArgs(
   tool: PlaygroundToolDef,
   values: Record<string, string>,
@@ -75,14 +87,8 @@ function buildArgs(
   const args: Record<string, any> = { ...extra };
 
   for (const field of tool.fields) {
-    let raw = values[field.name];
-    if (raw === undefined || raw === '') {
-      if (field.usePlaceholderWhenEmpty && field.placeholder?.trim()) {
-        raw = field.placeholder.trim();
-      } else {
-        continue;
-      }
-    }
+    const raw = resolveFieldRaw(field, values[field.name]);
+    if (raw === undefined) continue;
 
     const apiKey = field.apiName || field.name;
 
@@ -297,18 +303,27 @@ export function McpPlayground({
     }
 
     for (const field of selectedTool.fields) {
-      if (field.type !== 'file' || !field.required) continue;
-      const manualPath = fieldValues[field.name]?.trim();
-      const payload = filePayloads[field.name];
-      if (fileReading[field.name]) {
-        recordResult(selectedTool.name, {}, null, 0, `Still reading ${field.label.toLowerCase()}…`);
-        return;
+      if (field.type === 'file' && field.required) {
+        const manualPath = fieldValues[field.name]?.trim();
+        const payload = filePayloads[field.name];
+        if (fileReading[field.name]) {
+          recordResult(selectedTool.name, {}, null, 0, `Still reading ${field.label.toLowerCase()}…`);
+          return;
+        }
+        if (fileErrors[field.name]) {
+          recordResult(selectedTool.name, {}, null, 0, fileErrors[field.name]);
+          return;
+        }
+        if (!payload && !manualPath) {
+          recordResult(selectedTool.name, {}, null, 0, `${field.label} is required`);
+          return;
+        }
+        continue;
       }
-      if (fileErrors[field.name]) {
-        recordResult(selectedTool.name, {}, null, 0, fileErrors[field.name]);
-        return;
-      }
-      if (!payload && !manualPath) {
+
+      if (!field.required) continue;
+
+      if (!resolveFieldRaw(field, fieldValues[field.name])) {
         recordResult(selectedTool.name, {}, null, 0, `${field.label} is required`);
         return;
       }
