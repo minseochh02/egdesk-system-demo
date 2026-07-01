@@ -485,7 +485,9 @@ export function McpPlayground({
                         </option>
                       )}
                       {field.options?.map(opt => (
-                        <option key={opt} value={opt}>{opt || '(none)'}</option>
+                        <option key={opt || '__empty__'} value={opt}>
+                          {opt || field.placeholder || '(none)'}
+                        </option>
                       ))}
                     </select>
                   ) : field.type === 'textarea' ? (

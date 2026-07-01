@@ -54,7 +54,7 @@ export const DEMO_PAGES: DemoPageLink[] = [
     description: 'Call Gemini with automatic token usage tracking. View aggregated stats and raw call logs.',
     href: '/ai-caller-mcp',
     eyebrow: 'Gemini + tracking',
-    items: ['callAiCaller', 'getAiCallerUsage', 'getAiCallerLogs'],
+    items: ['callAiCaller', 'getAiCallerUsage', 'getAiCallerLogs', 'listAiCallerModels'],
   },
   {
     title: 'FinanceHub MCP',

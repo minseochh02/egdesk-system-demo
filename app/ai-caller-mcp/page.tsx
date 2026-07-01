@@ -1,20 +1,16 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
+import { listAiCallerModels } from '@/egdesk-helpers';
 import {
   McpPlayground,
   playgroundStyles,
   type PlaygroundToolDef,
 } from '@/components/mcp-playground';
 
-const GEMINI_MODEL_OPTIONS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-pro',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-pro-latest',
-  'gemini-1.0-pro',
-];
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
-const TOOLS: PlaygroundToolDef[] = [
+const BASE_TOOLS: PlaygroundToolDef[] = [
   {
     name: 'ai_caller_call',
     title: 'Call Gemini',
@@ -39,11 +35,11 @@ const TOOLS: PlaygroundToolDef[] = [
         name: 'model',
         label: 'Model',
         type: 'select',
-        options: GEMINI_MODEL_OPTIONS,
-        placeholder: 'gemini-2.5-flash',
+        options: [],
+        placeholder: DEFAULT_GEMINI_MODEL,
         usePlaceholderWhenEmpty: true,
         defaultValue: '',
-        hint: 'Leave on the default option to use gemini-2.5-flash.',
+        hint: 'Loading available Gemini models from EGDesk…',
       },
       {
         name: 'temperature',
@@ -77,8 +73,9 @@ const TOOLS: PlaygroundToolDef[] = [
       {
         name: 'model',
         label: 'Filter by model',
-        type: 'string',
-        placeholder: 'e.g. gemini-2.5-flash',
+        type: 'select',
+        options: [''],
+        placeholder: 'Any model',
       },
       {
         name: 'since',
@@ -116,8 +113,9 @@ const TOOLS: PlaygroundToolDef[] = [
       {
         name: 'model',
         label: 'Filter by model',
-        type: 'string',
-        placeholder: 'e.g. gemini-2.5-flash',
+        type: 'select',
+        options: [''],
+        placeholder: 'Any model',
       },
       {
         name: 'limit',
@@ -140,7 +138,89 @@ const RUNNING_HINTS: Record<string, string> = {
   ai_caller_get_logs: 'Fetching call logs...',
 };
 
+function withModelOptions(
+  tools: PlaygroundToolDef[],
+  models: string[],
+  defaultModel: string,
+  modelsError: string | null,
+): PlaygroundToolDef[] {
+  const modelHint = modelsError
+    ? `${modelsError} Leave on default to use ${defaultModel}.`
+    : models.length
+      ? `Loaded ${models.length} Gemini models from EGDesk. Leave on default to use ${defaultModel}.`
+      : `No models returned from EGDesk. Leave on default to use ${defaultModel}.`;
+
+  return tools.map(tool => ({
+    ...tool,
+    fields: tool.fields.map(field => {
+      if (field.name !== 'model' || field.type !== 'select') {
+        return field;
+      }
+
+      if (tool.name === 'ai_caller_call') {
+        return {
+          ...field,
+          options: models,
+          placeholder: defaultModel,
+          hint: modelHint,
+        };
+      }
+
+      return {
+        ...field,
+        options: ['', ...models],
+        hint: models.length ? `${models.length} models loaded from EGDesk.` : undefined,
+      };
+    }),
+  }));
+}
+
 export default function AiCallerPlayground() {
+  const [geminiModels, setGeminiModels] = useState<string[]>([]);
+  const [defaultModel, setDefaultModel] = useState(DEFAULT_GEMINI_MODEL);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadModels = async () => {
+      try {
+        const parsed = await listAiCallerModels();
+        if (cancelled) return;
+
+        const models = Array.isArray(parsed?.models)
+          ? parsed.models.filter((model: unknown) => typeof model === 'string')
+          : [];
+        const resolvedDefault =
+          typeof parsed?.defaultModel === 'string' && parsed.defaultModel.trim()
+            ? parsed.defaultModel.trim()
+            : DEFAULT_GEMINI_MODEL;
+
+        setGeminiModels(models);
+        setDefaultModel(
+          models.includes(resolvedDefault) ? resolvedDefault : models[0] ?? resolvedDefault,
+        );
+        setModelsError(null);
+      } catch (error: any) {
+        if (cancelled) return;
+        setGeminiModels([]);
+        setDefaultModel(DEFAULT_GEMINI_MODEL);
+        setModelsError(error?.message || 'Could not load Gemini models from EGDesk.');
+      }
+    };
+
+    void loadModels();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const tools = useMemo(
+    () => withModelOptions(BASE_TOOLS, geminiModels, defaultModel, modelsError),
+    [geminiModels, defaultModel, modelsError],
+  );
+
   const renderDisplay = (data: any, tool: string) => {
     const { kvGridStyle, kvTermStyle, kvDescStyle, miniLabelStyle } = playgroundStyles;
 
@@ -228,7 +308,7 @@ export default function AiCallerPlayground() {
       title="AI Caller Playground"
       subtitle="Gemini API calls with automatic token usage tracking. Every call is logged to SQLite for rate and cost monitoring."
       apiPath="/api/ai-caller"
-      tools={TOOLS}
+      tools={tools}
       categories={CATEGORIES}
       runningHints={RUNNING_HINTS}
       accentColor="#7c3aed"
