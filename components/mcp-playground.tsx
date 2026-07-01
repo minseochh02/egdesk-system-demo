@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { apiFetch, getEgdeskBasePath } from '@/lib/api';
 import {
   extractUploadedFilePath,
@@ -198,7 +198,11 @@ export function McpPlayground({
   validateBeforeRun,
   runButtonLabel,
 }: McpPlaygroundProps) {
-  const [selectedTool, setSelectedTool] = useState<PlaygroundToolDef>(tools[0]);
+  const [selectedToolName, setSelectedToolName] = useState(() => tools[0]?.name ?? '');
+  const selectedTool = useMemo(
+    () => tools.find(t => t.name === selectedToolName) ?? tools[0],
+    [tools, selectedToolName],
+  );
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [filePayloads, setFilePayloads] = useState<Record<string, FileFieldPayload>>({});
   const [fileReading, setFileReading] = useState<Record<string, boolean>>({});
@@ -220,6 +224,13 @@ export function McpPlayground({
   }, [currentHref]);
 
   useEffect(() => {
+    if (tools.length > 0 && !tools.some(t => t.name === selectedToolName)) {
+      setSelectedToolName(tools[0].name);
+    }
+  }, [tools, selectedToolName]);
+
+  useEffect(() => {
+    if (!selectedTool) return;
     const defaults: Record<string, string> = {};
     for (const field of selectedTool.fields) {
       if (field.defaultValue !== undefined) {
@@ -429,7 +440,7 @@ export function McpPlayground({
                     {catTools.map(tool => (
                       <button
                         key={tool.name}
-                        onClick={() => setSelectedTool(tool)}
+                        onClick={() => setSelectedToolName(tool.name)}
                         style={{
                           ...toolTabStyle,
                           ...(selectedTool.name === tool.name ? activeTabStyle : {}),
