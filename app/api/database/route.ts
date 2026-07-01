@@ -95,6 +95,15 @@ async function runHelper(helper: string, args: HelperArgs) {
       return deleteRows('images', { ids: [args.rowId] });
     }
 
+    case 'fetchImage': {
+      const file = await callUserDataTool('user_data_download_file', {
+        tableName: 'images',
+        rowId: args.rowId,
+        columnName: 'file',
+      });
+      return file;
+    }
+
     case 'getFileStats':
       return callUserDataTool('user_data_get_file_stats', { tableName: 'images' });
 

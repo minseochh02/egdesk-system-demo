@@ -221,6 +221,15 @@ const TOOLS: ToolDef[] = [
     ],
   },
   {
+    name: 'fetchImage',
+    title: 'Fetch image',
+    description: 'Fetch and display an uploaded image by row ID.',
+    category: 'files',
+    fields: [
+      { name: 'rowId', label: 'Image row ID', type: 'number', required: true, placeholder: '1' },
+    ],
+  },
+  {
     name: 'getFileStats',
     title: 'Storage stats',
     description: 'Get file storage statistics for the images table.',
@@ -978,6 +987,24 @@ function DisplayResultView({ data, helper }: { data: any; helper: string }) {
 
   if (typeof data !== 'object') {
     return <p style={{ color: '#374151', fontSize: 14, margin: 0 }}>{String(data)}</p>;
+  }
+
+  // Inline image display for fetchImage results
+  if (helper === 'fetchImage' && data.data && data.mimeType) {
+    return (
+      <div style={{ display: 'grid', gap: 12 }}>
+        <dl style={kvGridStyle}>
+          {data.filename && <><dt style={kvTermStyle}>Filename</dt><dd style={kvDescStyle}>{data.filename}</dd></>}
+          <dt style={kvTermStyle}>MIME type</dt><dd style={kvDescStyle}>{data.mimeType}</dd>
+          {data.sizeBytes != null && <><dt style={kvTermStyle}>Size</dt><dd style={kvDescStyle}>{(data.sizeBytes / 1024).toFixed(1)} KB</dd></>}
+        </dl>
+        <img
+          src={`data:${data.mimeType};base64,${data.data}`}
+          alt={data.filename || 'Fetched image'}
+          style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 8, border: '1px solid #e5e7eb' }}
+        />
+      </div>
+    );
   }
 
   const rows = Array.isArray(data.rows) ? data.rows : null;
