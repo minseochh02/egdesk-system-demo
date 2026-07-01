@@ -19,9 +19,7 @@ import {
   aggregateTable,
   executeSQL,
   uploadFile,
-  downloadFile,
   deleteFile,
-  listFiles,
   getFileStats,
 } from '../../../egdesk-helpers';
 
@@ -71,34 +69,34 @@ async function runHelper(helper: string, args: HelperArgs) {
     case 'executeSQL':
       return executeSQL(args.query);
 
-    case 'uploadFile':
-      return uploadFile(args.tableName, args.rowId, args.columnName, args.filename, args.data, {
+    case 'uploadImage': {
+      // 1. Insert a metadata row into the images table
+      const inserted = await insertRows('images', [{
+        filename: args.filename,
+        mime_type: args.mimeType || 'application/octet-stream',
+        size_bytes: Math.round((args.data?.length ?? 0) * 3 / 4),
+        uploaded_at: new Date().toISOString(),
+      }]);
+      // 2. Get the new row ID from the insert result
+      const rowId = inserted?.insertedIds?.[0] ?? inserted?.lastInsertRowid ?? 1;
+      // 3. Upload the file blob attached to that row
+      const upload = await uploadFile('images', rowId, 'file', args.filename, args.data, {
         mimeType: args.mimeType,
-        forceStorageType: args.forceStorageType,
-        compress: args.compress,
       });
+      return { rowId, upload };
+    }
 
-    case 'downloadFile':
-      return downloadFile({
-        fileId: args.fileId,
-        tableId: args.tableName,
-        rowId: args.rowId,
-        columnName: args.columnName,
-      });
+    case 'listImages':
+      return queryTable('images', { limit: 100, orderBy: 'id', orderDirection: 'desc' });
 
-    case 'deleteFile':
-      return deleteFile({
-        fileId: args.fileId,
-        tableId: args.tableName,
-        rowId: args.rowId,
-        columnName: args.columnName,
-      });
-
-    case 'listFiles':
-      return listFiles(args.tableName, args.rowId);
+    case 'deleteImage': {
+      // Delete the file blob first, then remove the row
+      await deleteFile({ tableId: 'images', rowId: args.rowId, columnName: 'file' });
+      return deleteRows('images', { ids: [args.rowId] });
+    }
 
     case 'getFileStats':
-      return getFileStats(args.tableName);
+      return getFileStats('images');
 
     default:
       throw new Error(`Unknown helper: ${helper}`);

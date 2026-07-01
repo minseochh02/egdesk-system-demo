@@ -194,67 +194,38 @@ const TOOLS: ToolDef[] = [
     ],
   },
   {
-    name: 'uploadFile',
-    title: 'Upload file',
-    description: 'Upload a file to a table row. Data is base64-encoded. <10KB = blob, 10-100KB = gzip blob, >100KB = filesystem.',
+    name: 'uploadImage',
+    title: 'Upload image',
+    description: 'Upload an image to the dedicated images table. Automatically creates a row and attaches the file.',
     category: 'files',
     fields: [
-      { name: 'tableName', label: 'Table', type: 'table-select', required: true },
-      { name: 'rowId', label: 'Row ID', type: 'number', required: true, placeholder: '1' },
-      { name: 'columnName', label: 'Column name', type: 'string', required: true, placeholder: 'attachment' },
-      { name: 'filename', label: 'Filename', type: 'string', required: true, placeholder: 'report.pdf' },
-      { name: 'data', label: 'File data (base64)', type: 'textarea', required: true, placeholder: 'SGVsbG8gV29ybGQ=', hint: 'Use the file picker below to select a file, or paste base64 directly.' },
-      { name: 'mimeType', label: 'MIME type (optional)', type: 'string', placeholder: 'application/pdf' },
-      {
-        name: 'forceStorageType',
-        label: 'Force storage type (optional)',
-        type: 'select',
-        options: ['', 'blob', 'file'],
-      },
+      { name: 'data', label: 'Image data (base64)', type: 'textarea', required: true, placeholder: 'SGVsbG8gV29ybGQ=', hint: 'Use the file picker below to select an image.' },
+      { name: 'filename', label: 'Filename', type: 'string', required: true, placeholder: 'photo.png' },
+      { name: 'mimeType', label: 'MIME type', type: 'string', placeholder: 'image/png' },
     ],
   },
   {
-    name: 'downloadFile',
-    title: 'Download file',
-    description: 'Download a file by ID or by (table, row, column) lookup.',
+    name: 'listImages',
+    title: 'List images',
+    description: 'List all uploaded images with their metadata.',
     category: 'files',
-    fields: [
-      { name: 'fileId', label: 'File ID (optional)', type: 'string', placeholder: 'uuid' },
-      { name: 'tableName', label: 'Table (if no file ID)', type: 'table-select' },
-      { name: 'rowId', label: 'Row ID (if no file ID)', type: 'number', placeholder: '1' },
-      { name: 'columnName', label: 'Column name (if no file ID)', type: 'string', placeholder: 'attachment' },
-    ],
+    fields: [],
   },
   {
-    name: 'deleteFile',
-    title: 'Delete file',
-    description: 'Delete a file by ID or by (table, row, column) lookup.',
+    name: 'deleteImage',
+    title: 'Delete image',
+    description: 'Delete an uploaded image by its row ID.',
     category: 'files',
     fields: [
-      { name: 'fileId', label: 'File ID (optional)', type: 'string', placeholder: 'uuid' },
-      { name: 'tableName', label: 'Table (if no file ID)', type: 'table-select' },
-      { name: 'rowId', label: 'Row ID (if no file ID)', type: 'number', placeholder: '1' },
-      { name: 'columnName', label: 'Column name (if no file ID)', type: 'string', placeholder: 'attachment' },
-    ],
-  },
-  {
-    name: 'listFiles',
-    title: 'List files',
-    description: 'List all files attached to a specific table row.',
-    category: 'files',
-    fields: [
-      { name: 'tableName', label: 'Table', type: 'table-select', required: true },
-      { name: 'rowId', label: 'Row ID', type: 'number', required: true, placeholder: '1' },
+      { name: 'rowId', label: 'Image row ID', type: 'number', required: true, placeholder: '1' },
     ],
   },
   {
     name: 'getFileStats',
-    title: 'File stats',
-    description: 'Get file storage statistics for all tables or a specific table.',
+    title: 'Storage stats',
+    description: 'Get file storage statistics for the images table.',
     category: 'files',
-    fields: [
-      { name: 'tableName', label: 'Table (optional)', type: 'table-select' },
-    ],
+    fields: [],
   },
 ];
 
@@ -716,9 +687,10 @@ export default function DatabasePlayground() {
 
                   {field.hint && <p style={hintStyle}>{field.hint}</p>}
 
-                  {field.name === 'data' && selectedTool.name === 'uploadFile' && (
+                  {field.name === 'data' && selectedTool.name === 'uploadImage' && (
                     <input
                       type="file"
+                      accept="image/*"
                       style={{ marginTop: 6, fontSize: 12 }}
                       onChange={e => {
                         const file = e.target.files?.[0];

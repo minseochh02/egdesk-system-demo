@@ -30,6 +30,13 @@ export const TABLES = {
     columnCount: 6,
     rowCount: 0,
   },
+  images: {
+    name: 'images',
+    displayName: 'Images',
+    columns: ['filename', 'mime_type', 'size_bytes', 'uploaded_at'],
+    columnCount: 4,
+    rowCount: 0,
+  },
 } as const;
 
 export type TableName = keyof typeof TABLES;
