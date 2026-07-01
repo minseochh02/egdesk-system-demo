@@ -6,6 +6,14 @@ import {
   type PlaygroundToolDef,
 } from '@/components/mcp-playground';
 
+const GEMINI_MODEL_OPTIONS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-pro-latest',
+  'gemini-1.0-pro',
+];
+
 const TOOLS: PlaygroundToolDef[] = [
   {
     name: 'ai_caller_call',
@@ -30,20 +38,26 @@ const TOOLS: PlaygroundToolDef[] = [
       {
         name: 'model',
         label: 'Model',
-        type: 'string',
-        placeholder: 'gemini-2.5-flash (default)',
+        type: 'select',
+        options: GEMINI_MODEL_OPTIONS,
+        placeholder: 'gemini-2.5-flash',
+        usePlaceholderWhenEmpty: true,
+        defaultValue: '',
+        hint: 'Leave on the default option to use gemini-2.5-flash.',
       },
       {
         name: 'temperature',
         label: 'Temperature',
         type: 'string',
         placeholder: '0.7',
+        usePlaceholderWhenEmpty: true,
       },
       {
         name: 'caller',
         label: 'Caller tag',
         type: 'string',
-        placeholder: 'mcp (default)',
+        placeholder: 'mcp',
+        usePlaceholderWhenEmpty: true,
       },
     ],
   },

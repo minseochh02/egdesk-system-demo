@@ -19,6 +19,8 @@ export type PlaygroundFieldDef = {
   options?: string[];
   required?: boolean;
   placeholder?: string;
+  /** When true, an empty value on submit uses {@link placeholder} as the argument. */
+  usePlaceholderWhenEmpty?: boolean;
   defaultValue?: string | boolean | number;
   hint?: string;
   apiName?: string;
@@ -73,8 +75,14 @@ function buildArgs(
   const args: Record<string, any> = { ...extra };
 
   for (const field of tool.fields) {
-    const raw = values[field.name];
-    if (raw === undefined || raw === '') continue;
+    let raw = values[field.name];
+    if (raw === undefined || raw === '') {
+      if (field.usePlaceholderWhenEmpty && field.placeholder?.trim()) {
+        raw = field.placeholder.trim();
+      } else {
+        continue;
+      }
+    }
 
     const apiKey = field.apiName || field.name;
 
@@ -469,8 +477,15 @@ export function McpPlayground({
                       onChange={e => setField(field.name, e.target.value)}
                       style={inputStyle}
                     >
+                      {field.usePlaceholderWhenEmpty && field.placeholder && (
+                        <option value="">
+                          {field.placeholder.includes('(')
+                            ? field.placeholder
+                            : `Default (${field.placeholder})`}
+                        </option>
+                      )}
                       {field.options?.map(opt => (
-                        <option key={opt} value={opt}>{opt}</option>
+                        <option key={opt} value={opt}>{opt || '(none)'}</option>
                       ))}
                     </select>
                   ) : field.type === 'textarea' ? (
