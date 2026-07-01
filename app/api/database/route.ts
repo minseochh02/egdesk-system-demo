@@ -95,7 +95,8 @@ async function runHelper(helper: string, args: HelperArgs) {
       return deleteRows('images', { ids: [args.rowId] });
     }
 
-    case 'fetchImage': {
+    case 'fetchImage':
+    case 'fetchFile': {
       const file = await callUserDataTool('user_data_download_file', {
         tableName: 'images',
         rowId: args.rowId,
