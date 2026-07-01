@@ -195,29 +195,29 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: 'uploadImage',
-    title: 'Upload image',
-    description: 'Upload an image to the dedicated images table. Automatically creates a row and attaches the file.',
+    title: 'Upload file',
+    description: 'Upload a file (image, PDF, video, audio, etc.) to the files table.',
     category: 'files',
     fields: [
-      { name: 'data', label: 'Image data (base64)', type: 'textarea', required: true, placeholder: 'SGVsbG8gV29ybGQ=', hint: 'Use the file picker below to select an image.' },
-      { name: 'filename', label: 'Filename', type: 'string', required: true, placeholder: 'photo.png' },
-      { name: 'mimeType', label: 'MIME type', type: 'string', placeholder: 'image/png' },
+      { name: 'data', label: 'File data (base64)', type: 'textarea', required: true, placeholder: 'SGVsbG8gV29ybGQ=', hint: 'Use the file picker below to select a file.' },
+      { name: 'filename', label: 'Filename', type: 'string', required: true, placeholder: 'document.pdf' },
+      { name: 'mimeType', label: 'MIME type', type: 'string', placeholder: 'application/pdf' },
     ],
   },
   {
     name: 'listImages',
-    title: 'List images',
-    description: 'List all uploaded images with their metadata.',
+    title: 'List files',
+    description: 'List all uploaded files with their metadata.',
     category: 'files',
     fields: [],
   },
   {
     name: 'deleteImage',
-    title: 'Delete image',
-    description: 'Delete an uploaded image by its row ID.',
+    title: 'Delete file',
+    description: 'Delete an uploaded file by its row ID.',
     category: 'files',
     fields: [
-      { name: 'rowId', label: 'Image row ID', type: 'number', required: true, placeholder: '1' },
+      { name: 'rowId', label: 'File row ID', type: 'number', required: true, placeholder: '1' },
     ],
   },
   {
@@ -699,7 +699,7 @@ export default function DatabasePlayground() {
                   {field.name === 'data' && selectedTool.name === 'uploadImage' && (
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="*/*"
                       style={{ marginTop: 6, fontSize: 12 }}
                       onChange={e => {
                         const file = e.target.files?.[0];
