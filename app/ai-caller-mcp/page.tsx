@@ -68,7 +68,28 @@ const BASE_TOOLS: PlaygroundToolDef[] = [
         placeholder: 'mcp',
         usePlaceholderWhenEmpty: true,
       },
+      {
+        name: 'filePaths',
+        label: 'Attach file (optional)',
+        type: 'file',
+        hint: 'Uploads via File System MCP, then passes the absolute path to Gemini. Supports images, PDF, DOCX, text, and video.',
+      },
+      {
+        name: 'images',
+        label: 'Images (optional, base64)',
+        type: 'textarea',
+        placeholder: 'data:image/png;base64,...',
+        hint: 'Base64 or data URLs. Max 4 images per call.',
+      },
     ],
+  },
+  {
+    name: 'ai_caller_get_capabilities',
+    title: 'Get attachment capabilities',
+    description: 'Supported file types, limits, and composable MCP workflows for ai_caller_call.',
+    category: 'inference',
+    helperName: 'callAiCallerTool',
+    fields: [],
   },
   {
     name: 'ai_caller_get_usage',
@@ -147,6 +168,7 @@ const CATEGORIES = [
 
 const RUNNING_HINTS: Record<string, string> = {
   ai_caller_call: 'Calling Gemini API and logging token usage...',
+  ai_caller_get_capabilities: 'Loading attachment capabilities...',
   ai_caller_get_usage: 'Querying aggregated usage stats...',
   ai_caller_get_logs: 'Fetching call logs...',
 };
@@ -337,6 +359,21 @@ export default function AiCallerPlayground() {
           }}>
             {String(data.content)}
           </pre>
+          {data.attachments && (
+            <>
+              <div style={miniLabelStyle}>Attachments</div>
+              <dl style={kvGridStyle}>
+                <dt style={kvTermStyle}>Images</dt>
+                <dd style={kvDescStyle}>{data.attachments.imageCount ?? 0}</dd>
+                <dt style={kvTermStyle}>Text files</dt>
+                <dd style={kvDescStyle}>{data.attachments.textFileCount ?? 0}</dd>
+                <dt style={kvTermStyle}>Documents</dt>
+                <dd style={kvDescStyle}>{data.attachments.documentFileCount ?? 0}</dd>
+                <dt style={kvTermStyle}>Videos</dt>
+                <dd style={kvDescStyle}>{data.attachments.videoFileCount ?? 0}</dd>
+              </dl>
+            </>
+          )}
           {data.usage && (
             <>
               <div style={miniLabelStyle}>Token Usage</div>
