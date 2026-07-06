@@ -26,6 +26,8 @@ export type PlaygroundFieldDef = {
   apiName?: string;
   accept?: string;
   allowManualPath?: boolean;
+  /** 'upload' (default) uploads via File System MCP; 'inline' keeps base64 for postProcessArgs */
+  fileDelivery?: 'upload' | 'inline';
 };
 
 export type PlaygroundToolDef = {
@@ -63,8 +65,19 @@ export type McpPlaygroundProps = {
   buildExtraArgs?: () => Record<string, any>;
   getDefaultFieldValues?: (tool: PlaygroundToolDef) => Record<string, string>;
   fileUploadApiPath?: string;
-  validateBeforeRun?: (tool: PlaygroundToolDef, values: Record<string, string>) => string | null;
+  validateBeforeRun?: (
+    tool: PlaygroundToolDef,
+    values: Record<string, string>,
+    filePayloads?: Record<string, FileFieldPayload>,
+  ) => string | null;
   runButtonLabel?: (tool: PlaygroundToolDef) => string;
+  postProcessArgs?: (
+    args: Record<string, any>,
+    context: {
+      tool: PlaygroundToolDef;
+      filePayloads: Record<string, FileFieldPayload>;
+    },
+  ) => Record<string, any>;
 };
 
 function resolveFieldRaw(
@@ -129,6 +142,10 @@ async function resolveFieldValues(
 
     const payload = filePayloads[field.name];
     if (!payload) continue;
+
+    if (field.fileDelivery === 'inline') {
+      continue;
+    }
 
     const res = await apiFetch(uploadApiPath, {
       method: 'POST',
@@ -203,6 +220,7 @@ export function McpPlayground({
   fileUploadApiPath = '/api/filesystem',
   validateBeforeRun,
   runButtonLabel,
+  postProcessArgs,
 }: McpPlaygroundProps) {
   const [selectedToolName, setSelectedToolName] = useState(() => tools[0]?.name ?? '');
   const selectedTool = useMemo(
@@ -296,7 +314,7 @@ export function McpPlayground({
   }, []);
 
   const handleRun = async () => {
-    const validationError = validateBeforeRun?.(selectedTool, fieldValues);
+    const validationError = validateBeforeRun?.(selectedTool, fieldValues, filePayloads);
     if (validationError) {
       recordResult(selectedTool.name, {}, null, 0, validationError);
       return;
@@ -336,7 +354,7 @@ export function McpPlayground({
     let args: Record<string, any> = {};
     try {
       const hasFileUpload = selectedTool.fields.some(
-        f => f.type === 'file' && filePayloads[f.name],
+        f => f.type === 'file' && filePayloads[f.name] && f.fileDelivery !== 'inline',
       );
       if (hasFileUpload) {
         setRunningHint('Uploading file to EGDesk Downloads via File System MCP…');
@@ -349,6 +367,9 @@ export function McpPlayground({
         fileUploadApiPath,
       );
       args = buildArgs(selectedTool, resolvedValues, buildExtraArgs?.() ?? {});
+      if (postProcessArgs) {
+        args = postProcessArgs(args, { tool: selectedTool, filePayloads });
+      }
 
       if (hasFileUpload) {
         startRunningTimer(selectedTool.name);

@@ -12,6 +12,68 @@ import {
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const DEFAULT_KEY_PLACEHOLDER = 'Default key (EGDesk preference)';
 
+const IMAGE_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'tif', 'tiff', 'avif', 'heic', 'heif',
+]);
+
+function mimeTypeForFilename(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  const map: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    bmp: 'image/bmp',
+    svg: 'image/svg+xml',
+    tif: 'image/tiff',
+    tiff: 'image/tiff',
+    avif: 'image/avif',
+    heic: 'image/heic',
+    heif: 'image/heif',
+    pdf: 'application/pdf',
+  };
+  return map[ext] ?? 'application/octet-stream';
+}
+
+function postProcessAiCallerArgs(
+  args: Record<string, any>,
+  context: {
+    tool: PlaygroundToolDef;
+    filePayloads: Record<string, { name: string; size: number; base64: string }>;
+  },
+): Record<string, any> {
+  if (context.tool.name !== 'ai_caller_call') return args;
+
+  const next = { ...args };
+  const payload = context.filePayloads.filePaths;
+  if (payload?.base64) {
+    const ext = payload.name.split('.').pop()?.toLowerCase() ?? '';
+    if (IMAGE_EXTENSIONS.has(ext)) {
+      next.images = [`data:${mimeTypeForFilename(payload.name)};base64,${payload.base64}`];
+    } else {
+      next.files = [{
+        name: payload.name,
+        content: payload.base64,
+        encoding: 'base64',
+        mimeType: mimeTypeForFilename(payload.name),
+      }];
+    }
+    delete next.filePaths;
+  } else if (typeof next.filePaths === 'string' && next.filePaths.trim()) {
+    next.filePaths = next.filePaths
+      .split(/\r?\n/)
+      .map((entry: string) => entry.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof next.images === 'string' && next.images.trim()) {
+    next.images = [next.images.trim()];
+  }
+
+  return next;
+}
+
 const BASE_TOOLS: PlaygroundToolDef[] = [
   {
     name: 'ai_caller_call',
@@ -24,9 +86,8 @@ const BASE_TOOLS: PlaygroundToolDef[] = [
         name: 'prompt',
         label: 'Prompt',
         type: 'textarea',
-        required: true,
-        placeholder: 'Summarize the benefits of token usage tracking in one paragraph.',
-        usePlaceholderWhenEmpty: true,
+        placeholder: 'Describe this image or ask a question about the attached file.',
+        usePlaceholderWhenEmpty: false,
       },
       {
         name: 'systemPrompt',
@@ -72,7 +133,9 @@ const BASE_TOOLS: PlaygroundToolDef[] = [
         name: 'filePaths',
         label: 'Attach file (optional)',
         type: 'file',
-        hint: 'Uploads via File System MCP, then passes the absolute path to Gemini. Supports images, PDF, DOCX, text, and video.',
+        fileDelivery: 'inline',
+        accept: 'image/*,.png,.jpg,.jpeg,.gif,.webp,.bmp,.pdf,.docx,.txt,application/pdf',
+        hint: 'PNG and other images are sent inline to Gemini vision. PDF/DOCX/text use inline files — no File System MCP upload required.',
       },
       {
         name: 'images',
@@ -461,6 +524,18 @@ export default function AiCallerPlayground() {
       runningHints={RUNNING_HINTS}
       accentColor="#7c3aed"
       renderDisplay={renderDisplay}
+      postProcessArgs={postProcessAiCallerArgs}
+      validateBeforeRun={(tool, values, filePayloads) => {
+        if (tool.name !== 'ai_caller_call') return null;
+        const prompt = values.prompt?.trim() ?? '';
+        const images = values.images?.trim() ?? '';
+        const filePath = values.filePaths?.trim() ?? '';
+        const hasAttachedFile = Boolean(filePayloads?.filePaths?.base64);
+        if (!prompt && !images && !filePath && !hasAttachedFile) {
+          return 'Enter a prompt, paste base64 image data, or attach a file.';
+        }
+        return null;
+      }}
     />
   );
 }
