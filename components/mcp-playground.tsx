@@ -93,6 +93,7 @@ export type McpPlaygroundProps = {
     fieldValues: Record<string, string>;
     filePayloads: Record<string, FileFieldPayload>;
   }) => React.ReactNode;
+  onFieldValuesChange?: (fieldValues: Record<string, string>) => void;
 };
 
 function resolveFieldRaw(
@@ -239,6 +240,7 @@ export function McpPlayground({
   renderFormExtras,
   renderFormExtrasAfterField,
   renderRunActions,
+  onFieldValuesChange,
 }: McpPlaygroundProps) {
   const [selectedToolName, setSelectedToolName] = useState(() => tools[0]?.name ?? '');
   const selectedTool = useMemo(
@@ -411,7 +413,11 @@ export function McpPlayground({
   };
 
   const setField = (name: string, value: string) => {
-    setFieldValues(prev => ({ ...prev, [name]: value }));
+    setFieldValues(prev => {
+      const next = { ...prev, [name]: value };
+      onFieldValuesChange?.(next);
+      return next;
+    });
   };
 
   const loadFile = async (name: string, file: File | null) => {

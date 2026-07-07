@@ -12,7 +12,6 @@ const IMAGE_EXTENSIONS = new Set([
 const SNIPPET_DEFAULTS = {
   model: 'gemini-2.5-flash',
   temperature: 0.7,
-  maxOutputTokens: 4096,
   caller: 'mcp',
 };
 
@@ -200,11 +199,11 @@ function buildSnippetOptions(
     }
   }
 
-  if (typeof args.maxOutputTokens === 'number' && args.maxOutputTokens !== SNIPPET_DEFAULTS.maxOutputTokens) {
+  if (typeof args.maxOutputTokens === 'number' && args.maxOutputTokens > 0) {
     options.maxOutputTokens = args.maxOutputTokens;
   } else if (typeof args.maxOutputTokens === 'string' && args.maxOutputTokens.trim()) {
     const parsed = Number(args.maxOutputTokens);
-    if (!Number.isNaN(parsed) && parsed !== SNIPPET_DEFAULTS.maxOutputTokens) {
+    if (!Number.isNaN(parsed) && parsed > 0) {
       options.maxOutputTokens = parsed;
     }
   }

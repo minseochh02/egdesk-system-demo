@@ -151,8 +151,8 @@ const BASE_TOOLS: PlaygroundToolDef[] = [
         name: 'maxOutputTokens',
         label: 'Max output tokens',
         type: 'string',
-        placeholder: '4096',
-        usePlaceholderWhenEmpty: true,
+        placeholder: 'Auto (model max)',
+        hint: 'Leave empty to auto-use the model\'s maximum from the Gemini API.',
       },
       {
         name: 'filePaths',
@@ -269,6 +269,8 @@ function withPlaygroundOptions(
   apiKeyNames: string[],
   apiKeysError: string | null,
   preferredKeyName: string | null,
+  modelDetails: Array<{ name: string; outputTokenLimit: number | null }>,
+  selectedModel: string,
 ): PlaygroundToolDef[] {
   const modelHint = modelsError
     ? `${modelsError} Leave on default to use ${defaultModel}.`
@@ -283,6 +285,13 @@ function withPlaygroundOptions(
         ? `Loaded ${apiKeyNames.length} Google key(s). Default uses "${preferredKeyName}" (EGDesk preference).`
         : `Loaded ${apiKeyNames.length} Google key(s) from AI Keys Manager. Leave on default for EGDesk preference.`
       : 'No named Google keys in AI Keys Manager. Leave on default to use env var or preferred key.';
+
+  const activeModel = selectedModel || defaultModel;
+  const activeModelDetails = modelDetails.find((model) => model.name === activeModel);
+  const modelMaxOutput = activeModelDetails?.outputTokenLimit;
+  const maxOutputHint = modelMaxOutput
+    ? `Leave empty to auto-use ${modelMaxOutput.toLocaleString()} tokens (this model's Gemini API max).`
+    : 'Leave empty to auto-use the model\'s maximum output tokens from the Gemini API.';
 
   return tools.map(tool => ({
     ...tool,
@@ -313,6 +322,13 @@ function withPlaygroundOptions(
         };
       }
 
+      if (field.name === 'maxOutputTokens' && tool.name === 'ai_caller_call') {
+        return {
+          ...field,
+          hint: maxOutputHint,
+        };
+      }
+
       return field;
     }),
   }));
@@ -338,7 +354,13 @@ function extractGoogleKeyNames(parsed: any): { names: string[]; preferredName: s
 
 export default function AiCallerPlayground() {
   const [geminiModels, setGeminiModels] = useState<string[]>([]);
+  const [modelDetails, setModelDetails] = useState<Array<{
+    name: string;
+    outputTokenLimit: number | null;
+    inputTokenLimit: number | null;
+  }>>([]);
   const [defaultModel, setDefaultModel] = useState(DEFAULT_GEMINI_MODEL);
+  const [selectedModel, setSelectedModel] = useState('');
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [apiKeyNames, setApiKeyNames] = useState<string[]>([]);
   const [preferredKeyName, setPreferredKeyName] = useState<string | null>(null);
@@ -381,12 +403,22 @@ export default function AiCallerPlayground() {
             : DEFAULT_GEMINI_MODEL;
 
         setGeminiModels(models);
+        setModelDetails(
+          Array.isArray(parsed?.modelDetails)
+            ? parsed.modelDetails.map((model: any) => ({
+              name: String(model?.name ?? ''),
+              outputTokenLimit: Number.isFinite(model?.outputTokenLimit) ? Number(model.outputTokenLimit) : null,
+              inputTokenLimit: Number.isFinite(model?.inputTokenLimit) ? Number(model.inputTokenLimit) : null,
+            })).filter((model: { name: string }) => model.name)
+            : [],
+        );
         setDefaultModel(
           models.includes(resolvedDefault) ? resolvedDefault : models[0] ?? resolvedDefault,
         );
         setModelsError(null);
       } else {
         setGeminiModels([]);
+        setModelDetails([]);
         setDefaultModel(DEFAULT_GEMINI_MODEL);
         setModelsError(
           modelsResult.reason?.message || 'Could not load Gemini models from EGDesk.',
@@ -424,8 +456,10 @@ export default function AiCallerPlayground() {
         apiKeyNames,
         apiKeysError,
         preferredKeyName,
+        modelDetails,
+        selectedModel,
       ),
-    [geminiModels, defaultModel, modelsError, apiKeyNames, apiKeysError, preferredKeyName],
+    [geminiModels, defaultModel, modelsError, apiKeyNames, apiKeysError, preferredKeyName, modelDetails, selectedModel],
   );
 
   const renderDisplay = (data: any, tool: string) => {
@@ -561,6 +595,41 @@ export default function AiCallerPlayground() {
               </dl>
             </>
           )}
+          {(data.finishReason || data.outputTokens) && (
+            <>
+              <div style={miniLabelStyle}>Output limits</div>
+              <dl style={kvGridStyle}>
+                {data.finishReason ? (
+                  <>
+                    <dt style={kvTermStyle}>Finish reason</dt>
+                    <dd style={{
+                      ...kvDescStyle,
+                      color: data.finishReason === 'MAX_TOKENS' ? '#b45309' : kvDescStyle.color,
+                      fontWeight: data.finishReason === 'MAX_TOKENS' ? 600 : kvDescStyle.fontWeight,
+                    }}>
+                      {data.finishReason}
+                      {data.finishReason === 'MAX_TOKENS' ? ' — response may be truncated' : ''}
+                    </dd>
+                  </>
+                ) : null}
+                {data.outputTokens?.configured != null ? (
+                  <>
+                    <dt style={kvTermStyle}>Max output (configured)</dt>
+                    <dd style={kvDescStyle}>
+                      {Number(data.outputTokens.configured).toLocaleString()}
+                      {data.outputTokens.autoMaxed ? ' (auto — model max)' : ''}
+                    </dd>
+                  </>
+                ) : null}
+                {data.outputTokens?.modelMax != null ? (
+                  <>
+                    <dt style={kvTermStyle}>Model max output</dt>
+                    <dd style={kvDescStyle}>{Number(data.outputTokens.modelMax).toLocaleString()}</dd>
+                  </>
+                ) : null}
+              </dl>
+            </>
+          )}
           {data.apiKey?.name && (
             <>
               <div style={miniLabelStyle}>API Key Used</div>
@@ -646,11 +715,52 @@ export default function AiCallerPlayground() {
         ) : null
       )}
       renderFormExtrasAfterField="maxOutputTokens"
-      renderFormExtras={({ tool }) => (
-        tool.name === 'ai_caller_call'
-          ? <AiCallerToolsPanel value={geminiTools} onChange={setGeminiTools} accentColor="#7c3aed" />
-          : null
-      )}
+      onFieldValuesChange={(fieldValues) => {
+        const model = fieldValues.model?.trim();
+        setSelectedModel(model || '');
+      }}
+      renderFormExtras={({ tool, fieldValues, setField }) => {
+        if (tool.name !== 'ai_caller_call') return null;
+
+        const activeModel = fieldValues.model?.trim() || selectedModel || defaultModel;
+        const modelMax = modelDetails.find((model) => model.name === activeModel)?.outputTokenLimit;
+        const currentMax = fieldValues.maxOutputTokens?.trim() ?? '';
+        const { secondaryBtnStyle } = playgroundStyles;
+
+        return (
+          <div style={{ marginBottom: 16 }}>
+            {modelMax ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setField('maxOutputTokens', String(modelMax))}
+                  style={{
+                    ...secondaryBtnStyle,
+                    borderColor: '#c4b5fd',
+                    color: '#5b21b6',
+                    background: '#faf5ff',
+                  }}
+                >
+                  Use model max ({modelMax.toLocaleString()})
+                </button>
+                {currentMax ? (
+                  <button
+                    type="button"
+                    onClick={() => setField('maxOutputTokens', '')}
+                    style={secondaryBtnStyle}
+                  >
+                    Clear (auto)
+                  </button>
+                ) : null}
+                <span style={{ fontSize: 12, color: '#6b7280' }}>
+                  Empty field auto-uses {modelMax.toLocaleString()} for {activeModel}.
+                </span>
+              </div>
+            ) : null}
+            <AiCallerToolsPanel value={geminiTools} onChange={setGeminiTools} accentColor="#7c3aed" />
+          </div>
+        );
+      }}
       validateBeforeRun={(tool, values, filePayloads) => {
         if (tool.name !== 'ai_caller_call') return null;
         const prompt = values.prompt?.trim() ?? '';
