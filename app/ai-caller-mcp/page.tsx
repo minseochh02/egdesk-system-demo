@@ -130,6 +130,39 @@ const BASE_TOOLS: PlaygroundToolDef[] = [
         usePlaceholderWhenEmpty: true,
       },
       {
+        name: 'maxOutputTokens',
+        label: 'Max output tokens',
+        type: 'string',
+        placeholder: '4096',
+        usePlaceholderWhenEmpty: true,
+      },
+      {
+        name: 'tools',
+        label: 'Tools (optional, JSON)',
+        type: 'json',
+        placeholder: JSON.stringify([
+          {
+            name: 'get_weather',
+            description: 'Get current weather for a city',
+            parameters: {
+              type: 'object',
+              properties: {
+                city: { type: 'string', description: 'City name' },
+              },
+              required: ['city'],
+            },
+          },
+        ], null, 2),
+        hint: 'Gemini function declarations. AI Caller returns functionCalls but does not execute them.',
+      },
+      {
+        name: 'toolConfig',
+        label: 'Tool config (optional, JSON)',
+        type: 'json',
+        placeholder: JSON.stringify({ mode: 'AUTO' }, null, 2),
+        hint: 'Function-calling mode: AUTO, ANY, or NONE. Cannot combine with responseSchema.',
+      },
+      {
         name: 'filePaths',
         label: 'Attach file (optional)',
         type: 'file',
@@ -405,23 +438,47 @@ export default function AiCallerPlayground() {
   const renderDisplay = (data: any, tool: string) => {
     const { kvGridStyle, kvTermStyle, kvDescStyle, miniLabelStyle } = playgroundStyles;
 
-    if (tool === 'ai_caller_call' && data?.content) {
+    if (tool === 'ai_caller_call' && (data?.content || data?.functionCalls?.length)) {
       return (
         <div>
-          <div style={miniLabelStyle}>Response</div>
-          <pre style={{
-            background: '#f0fdf4',
-            border: '1px solid #bbf7d0',
-            borderRadius: 8,
-            padding: 14,
-            fontSize: 14,
-            lineHeight: 1.65,
-            whiteSpace: 'pre-wrap',
-            margin: 0,
-            marginBottom: 12,
-          }}>
-            {String(data.content)}
-          </pre>
+          {data.content ? (
+            <>
+              <div style={miniLabelStyle}>Response</div>
+              <pre style={{
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: 8,
+                padding: 14,
+                fontSize: 14,
+                lineHeight: 1.65,
+                fontFamily: 'Consolas, "Cascadia Mono", ui-monospace, monospace',
+                whiteSpace: 'pre-wrap',
+                margin: 0,
+                marginBottom: 12,
+              }}>
+                {String(data.content)}
+              </pre>
+            </>
+          ) : null}
+          {Array.isArray(data.functionCalls) && data.functionCalls.length > 0 && (
+            <>
+              <div style={miniLabelStyle}>Function Calls</div>
+              <pre style={{
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: 8,
+                padding: 14,
+                fontSize: 13,
+                lineHeight: 1.55,
+                fontFamily: 'Consolas, "Cascadia Mono", ui-monospace, monospace',
+                whiteSpace: 'pre-wrap',
+                margin: 0,
+                marginBottom: 12,
+              }}>
+                {JSON.stringify(data.functionCalls, null, 2)}
+              </pre>
+            </>
+          )}
           {data.attachments && (
             <>
               <div style={miniLabelStyle}>Attachments</div>
