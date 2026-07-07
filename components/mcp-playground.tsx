@@ -76,6 +76,7 @@ export type McpPlaygroundProps = {
     args: Record<string, any>,
     context: {
       tool: PlaygroundToolDef;
+      fieldValues: Record<string, string>;
       filePayloads: Record<string, FileFieldPayload>;
     },
   ) => Record<string, any>;
@@ -87,6 +88,11 @@ export type McpPlaygroundProps = {
   }) => React.ReactNode;
   /** Insert {@link renderFormExtras} immediately after this field name */
   renderFormExtrasAfterField?: string;
+  renderRunActions?: (context: {
+    tool: PlaygroundToolDef;
+    fieldValues: Record<string, string>;
+    filePayloads: Record<string, FileFieldPayload>;
+  }) => React.ReactNode;
 };
 
 function resolveFieldRaw(
@@ -232,6 +238,7 @@ export function McpPlayground({
   postProcessArgs,
   renderFormExtras,
   renderFormExtrasAfterField,
+  renderRunActions,
 }: McpPlaygroundProps) {
   const [selectedToolName, setSelectedToolName] = useState(() => tools[0]?.name ?? '');
   const selectedTool = useMemo(
@@ -379,7 +386,7 @@ export function McpPlayground({
       );
       args = buildArgs(selectedTool, resolvedValues, buildExtraArgs?.() ?? {});
       if (postProcessArgs) {
-        args = postProcessArgs(args, { tool: selectedTool, filePayloads });
+        args = postProcessArgs(args, { tool: selectedTool, fieldValues, filePayloads });
       }
 
       if (hasFileUpload) {
@@ -648,6 +655,7 @@ export function McpPlayground({
                   ? `Running… ${runningElapsedSec}s`
                   : (runButtonLabel?.(selectedTool) ?? 'Run')}
               </button>
+              {renderRunActions?.({ tool: selectedTool, fieldValues, filePayloads })}
             </div>
 
             {running && runningHint && (

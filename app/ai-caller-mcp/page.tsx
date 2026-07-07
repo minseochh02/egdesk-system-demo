@@ -10,85 +10,86 @@ import {
 } from '@/components/mcp-playground';
 import { AiCallerToolsPanel } from '@/components/ai-caller-tools-panel';
 import {
-  buildGeminiToolArgsFromPanel,
   createDefaultGeminiToolsState,
   type GeminiToolsPanelState,
 } from '@/lib/ai-caller-tools';
+import {
+  buildAiCallerArgsFromPlayground,
+  buildCallAiCallerSnippet,
+} from '@/lib/ai-caller-helper-snippet';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const DEFAULT_KEY_PLACEHOLDER = 'Default key (EGDesk preference)';
 
-const IMAGE_EXTENSIONS = new Set([
-  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'tif', 'tiff', 'avif', 'heic', 'heif',
-]);
-
-function mimeTypeForFilename(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  const map: Record<string, string> = {
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    bmp: 'image/bmp',
-    svg: 'image/svg+xml',
-    tif: 'image/tiff',
-    tiff: 'image/tiff',
-    avif: 'image/avif',
-    heic: 'image/heic',
-    heif: 'image/heif',
-    pdf: 'application/pdf',
-  };
-  return map[ext] ?? 'application/octet-stream';
-}
-
 function postProcessAiCallerArgs(
-  args: Record<string, any>,
+  _args: Record<string, any>,
   context: {
     tool: PlaygroundToolDef;
+    fieldValues: Record<string, string>;
     filePayloads: Record<string, { name: string; size: number; base64: string }>;
     geminiTools?: GeminiToolsPanelState;
   },
 ): Record<string, any> {
-  if (context.tool.name !== 'ai_caller_call') return args;
+  if (context.tool.name !== 'ai_caller_call') return _args;
 
-  const next = { ...args };
-  const payload = context.filePayloads.filePaths;
-  if (payload?.base64) {
-    const ext = payload.name.split('.').pop()?.toLowerCase() ?? '';
-    if (IMAGE_EXTENSIONS.has(ext)) {
-      next.images = [`data:${mimeTypeForFilename(payload.name)};base64,${payload.base64}`];
-    } else {
-      next.files = [{
-        name: payload.name,
-        content: payload.base64,
-        encoding: 'base64',
-        mimeType: mimeTypeForFilename(payload.name),
-      }];
+  const args = buildAiCallerArgsFromPlayground(
+    context.tool.fields,
+    context.fieldValues,
+    context.filePayloads,
+    context.geminiTools ?? createDefaultGeminiToolsState(),
+  );
+  delete args.__attachedImageMeta;
+  delete args.__attachedFileMeta;
+  return args;
+}
+
+function CopyCallAiCallerButton({
+  tool,
+  fieldValues,
+  filePayloads,
+  geminiTools,
+  defaultModel,
+}: {
+  tool: PlaygroundToolDef;
+  fieldValues: Record<string, string>;
+  filePayloads: Record<string, { name: string; size: number; base64: string }>;
+  geminiTools: GeminiToolsPanelState;
+  defaultModel: string;
+}) {
+  const { secondaryBtnStyle } = playgroundStyles;
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCopy = async () => {
+    setError(null);
+    try {
+      const args = buildAiCallerArgsFromPlayground(tool.fields, fieldValues, filePayloads, geminiTools);
+      const snippet = buildCallAiCallerSnippet(args, defaultModel);
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch (err: any) {
+      setError(err?.message || 'Could not build helper snippet');
     }
-    delete next.filePaths;
-  } else if (typeof next.filePaths === 'string' && next.filePaths.trim()) {
-    next.filePaths = next.filePaths
-      .split(/\r?\n/)
-      .map((entry: string) => entry.trim())
-      .filter(Boolean);
-  }
+  };
 
-  if (typeof next.images === 'string' && next.images.trim()) {
-    next.images = [next.images.trim()];
-  }
-
-  if (context.geminiTools) {
-    const toolArgs = buildGeminiToolArgsFromPanel(context.geminiTools);
-    if (toolArgs.tools) next.tools = toolArgs.tools;
-    else delete next.tools;
-    if (toolArgs.toolConfig) next.toolConfig = toolArgs.toolConfig;
-    else delete next.toolConfig;
-    if (toolArgs.responseSchema) next.responseSchema = toolArgs.responseSchema;
-    else delete next.responseSchema;
-  }
-
-  return next;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <button
+        type="button"
+        onClick={handleCopy}
+        style={{
+          ...secondaryBtnStyle,
+          borderColor: '#c4b5fd',
+          color: '#5b21b6',
+          background: '#faf5ff',
+        }}
+      >
+        {copied ? 'Copied callAiCaller()' : 'Copy callAiCaller()'}
+      </button>
+      {error && <span style={{ fontSize: 12, color: '#dc2626' }}>{error}</span>}
+    </div>
+  );
 }
 
 const BASE_TOOLS: PlaygroundToolDef[] = [
@@ -633,6 +634,17 @@ export default function AiCallerPlayground() {
       accentColor="#7c3aed"
       renderDisplay={renderDisplay}
       postProcessArgs={(args, context) => postProcessAiCallerArgs(args, { ...context, geminiTools })}
+      renderRunActions={({ tool, fieldValues, filePayloads }) => (
+        tool.name === 'ai_caller_call' ? (
+          <CopyCallAiCallerButton
+            tool={tool}
+            fieldValues={fieldValues}
+            filePayloads={filePayloads}
+            geminiTools={geminiTools}
+            defaultModel={defaultModel}
+          />
+        ) : null
+      )}
       renderFormExtrasAfterField="maxOutputTokens"
       renderFormExtras={({ tool }) => (
         tool.name === 'ai_caller_call'
