@@ -661,7 +661,7 @@ export default function AiCallerPlayground() {
           return 'Enter a prompt, paste base64 image data, or attach a file.';
         }
         try {
-          buildGeminiToolArgsFromPanel(geminiTools);
+          buildAiCallerArgsFromPlayground(tool.fields, values, filePayloads ?? {}, geminiTools);
         } catch (err: any) {
           return err?.message || 'Invalid Gemini tools configuration.';
         }
