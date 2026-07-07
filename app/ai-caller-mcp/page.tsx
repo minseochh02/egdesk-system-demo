@@ -8,6 +8,12 @@ import {
   playgroundStyles,
   type PlaygroundToolDef,
 } from '@/components/mcp-playground';
+import { AiCallerToolsPanel } from '@/components/ai-caller-tools-panel';
+import {
+  buildGeminiToolArgsFromPanel,
+  createDefaultGeminiToolsState,
+  type GeminiToolsPanelState,
+} from '@/lib/ai-caller-tools';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const DEFAULT_KEY_PLACEHOLDER = 'Default key (EGDesk preference)';
@@ -41,6 +47,7 @@ function postProcessAiCallerArgs(
   context: {
     tool: PlaygroundToolDef;
     filePayloads: Record<string, { name: string; size: number; base64: string }>;
+    geminiTools?: GeminiToolsPanelState;
   },
 ): Record<string, any> {
   if (context.tool.name !== 'ai_caller_call') return args;
@@ -69,6 +76,16 @@ function postProcessAiCallerArgs(
 
   if (typeof next.images === 'string' && next.images.trim()) {
     next.images = [next.images.trim()];
+  }
+
+  if (context.geminiTools) {
+    const toolArgs = buildGeminiToolArgsFromPanel(context.geminiTools);
+    if (toolArgs.tools) next.tools = toolArgs.tools;
+    else delete next.tools;
+    if (toolArgs.toolConfig) next.toolConfig = toolArgs.toolConfig;
+    else delete next.toolConfig;
+    if (toolArgs.responseSchema) next.responseSchema = toolArgs.responseSchema;
+    else delete next.responseSchema;
   }
 
   return next;
@@ -135,32 +152,6 @@ const BASE_TOOLS: PlaygroundToolDef[] = [
         type: 'string',
         placeholder: '4096',
         usePlaceholderWhenEmpty: true,
-      },
-      {
-        name: 'tools',
-        label: 'Tools (optional, JSON)',
-        type: 'json',
-        placeholder: JSON.stringify([
-          {
-            name: 'get_weather',
-            description: 'Get current weather for a city',
-            parameters: {
-              type: 'object',
-              properties: {
-                city: { type: 'string', description: 'City name' },
-              },
-              required: ['city'],
-            },
-          },
-        ], null, 2),
-        hint: 'Gemini function declarations. AI Caller returns functionCalls but does not execute them.',
-      },
-      {
-        name: 'toolConfig',
-        label: 'Tool config (optional, JSON)',
-        type: 'json',
-        placeholder: JSON.stringify({ mode: 'AUTO' }, null, 2),
-        hint: 'Function-calling mode: AUTO, ANY, or NONE. Cannot combine with responseSchema.',
       },
       {
         name: 'filePaths',
@@ -351,6 +342,7 @@ export default function AiCallerPlayground() {
   const [apiKeyNames, setApiKeyNames] = useState<string[]>([]);
   const [preferredKeyName, setPreferredKeyName] = useState<string | null>(null);
   const [apiKeysError, setApiKeysError] = useState<string | null>(null);
+  const [geminiTools, setGeminiTools] = useState<GeminiToolsPanelState>(() => createDefaultGeminiToolsState());
 
   useEffect(() => {
     let cancelled = false;
@@ -438,7 +430,7 @@ export default function AiCallerPlayground() {
   const renderDisplay = (data: any, tool: string) => {
     const { kvGridStyle, kvTermStyle, kvDescStyle, miniLabelStyle } = playgroundStyles;
 
-    if (tool === 'ai_caller_call' && (data?.content || data?.functionCalls?.length)) {
+    if (tool === 'ai_caller_call' && (data?.content || data?.functionCalls?.length || data?.json)) {
       return (
         <div>
           {data.content ? (
@@ -460,6 +452,25 @@ export default function AiCallerPlayground() {
               </pre>
             </>
           ) : null}
+          {data.json && (
+            <>
+              <div style={miniLabelStyle}>Parsed JSON</div>
+              <pre style={{
+                background: '#f5f3ff',
+                border: '1px solid #ddd6fe',
+                borderRadius: 8,
+                padding: 14,
+                fontSize: 13,
+                lineHeight: 1.55,
+                fontFamily: 'Consolas, "Cascadia Mono", ui-monospace, monospace',
+                whiteSpace: 'pre-wrap',
+                margin: 0,
+                marginBottom: 12,
+              }}>
+                {JSON.stringify(data.json, null, 2)}
+              </pre>
+            </>
+          )}
           {Array.isArray(data.functionCalls) && data.functionCalls.length > 0 && (
             <>
               <div style={miniLabelStyle}>Function Calls</div>
@@ -476,6 +487,46 @@ export default function AiCallerPlayground() {
                 marginBottom: 12,
               }}>
                 {JSON.stringify(data.functionCalls, null, 2)}
+              </pre>
+            </>
+          )}
+          {data.groundingMetadata && (
+            <>
+              <div style={miniLabelStyle}>Grounding</div>
+              <pre style={{
+                background: '#fff7ed',
+                border: '1px solid #fed7aa',
+                borderRadius: 8,
+                padding: 14,
+                fontSize: 12,
+                lineHeight: 1.5,
+                fontFamily: 'Consolas, "Cascadia Mono", ui-monospace, monospace',
+                whiteSpace: 'pre-wrap',
+                margin: 0,
+                marginBottom: 12,
+                maxHeight: 240,
+                overflow: 'auto',
+              }}>
+                {JSON.stringify(data.groundingMetadata, null, 2)}
+              </pre>
+            </>
+          )}
+          {data.codeExecutionResult && (
+            <>
+              <div style={miniLabelStyle}>Code execution result</div>
+              <pre style={{
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: 8,
+                padding: 14,
+                fontSize: 12,
+                lineHeight: 1.5,
+                fontFamily: 'Consolas, "Cascadia Mono", ui-monospace, monospace',
+                whiteSpace: 'pre-wrap',
+                margin: 0,
+                marginBottom: 12,
+              }}>
+                {String(data.codeExecutionResult)}
               </pre>
             </>
           )}
@@ -581,7 +632,13 @@ export default function AiCallerPlayground() {
       runningHints={RUNNING_HINTS}
       accentColor="#7c3aed"
       renderDisplay={renderDisplay}
-      postProcessArgs={postProcessAiCallerArgs}
+      postProcessArgs={(args, context) => postProcessAiCallerArgs(args, { ...context, geminiTools })}
+      renderFormExtrasAfterField="maxOutputTokens"
+      renderFormExtras={({ tool }) => (
+        tool.name === 'ai_caller_call'
+          ? <AiCallerToolsPanel value={geminiTools} onChange={setGeminiTools} accentColor="#7c3aed" />
+          : null
+      )}
       validateBeforeRun={(tool, values, filePayloads) => {
         if (tool.name !== 'ai_caller_call') return null;
         const prompt = values.prompt?.trim() ?? '';
@@ -590,6 +647,11 @@ export default function AiCallerPlayground() {
         const hasAttachedFile = Boolean(filePayloads?.filePaths?.base64);
         if (!prompt && !images && !filePath && !hasAttachedFile) {
           return 'Enter a prompt, paste base64 image data, or attach a file.';
+        }
+        try {
+          buildGeminiToolArgsFromPanel(geminiTools);
+        } catch (err: any) {
+          return err?.message || 'Invalid Gemini tools configuration.';
         }
         return null;
       }}

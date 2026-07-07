@@ -79,6 +79,14 @@ export type McpPlaygroundProps = {
       filePayloads: Record<string, FileFieldPayload>;
     },
   ) => Record<string, any>;
+  renderFormExtras?: (context: {
+    tool: PlaygroundToolDef;
+    fieldValues: Record<string, string>;
+    setField: (name: string, value: string) => void;
+    filePayloads: Record<string, FileFieldPayload>;
+  }) => React.ReactNode;
+  /** Insert {@link renderFormExtras} immediately after this field name */
+  renderFormExtrasAfterField?: string;
 };
 
 function resolveFieldRaw(
@@ -222,6 +230,8 @@ export function McpPlayground({
   validateBeforeRun,
   runButtonLabel,
   postProcessArgs,
+  renderFormExtras,
+  renderFormExtrasAfterField,
 }: McpPlaygroundProps) {
   const [selectedToolName, setSelectedToolName] = useState(() => tools[0]?.name ?? '');
   const selectedTool = useMemo(
@@ -616,8 +626,20 @@ export function McpPlayground({
                     />
                   )}
                   {field.hint && <p style={hintStyle}>{field.hint}</p>}
+                  {renderFormExtrasAfterField === field.name && renderFormExtras?.({
+                    tool: selectedTool,
+                    fieldValues,
+                    setField,
+                    filePayloads,
+                  })}
                 </div>
               ))}
+              {!renderFormExtrasAfterField && renderFormExtras?.({
+                tool: selectedTool,
+                fieldValues,
+                setField,
+                filePayloads,
+              })}
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap', alignItems: 'center' }}>
