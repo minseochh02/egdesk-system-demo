@@ -286,7 +286,11 @@ export function McpPlayground({
     setFilePayloads({});
     setFileReading({});
     setFileErrors({});
-  }, [selectedTool, getDefaultFieldValues]);
+  }, [selectedToolName, getDefaultFieldValues]);
+
+  useEffect(() => {
+    onFieldValuesChange?.(fieldValues);
+  }, [fieldValues, onFieldValuesChange]);
 
   useEffect(() => {
     return () => {
@@ -413,11 +417,7 @@ export function McpPlayground({
   };
 
   const setField = (name: string, value: string) => {
-    setFieldValues(prev => {
-      const next = { ...prev, [name]: value };
-      onFieldValuesChange?.(next);
-      return next;
-    });
+    setFieldValues(prev => ({ ...prev, [name]: value }));
   };
 
   const loadFile = async (name: string, file: File | null) => {

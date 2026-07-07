@@ -716,8 +716,8 @@ export default function AiCallerPlayground() {
       )}
       renderFormExtrasAfterField="maxOutputTokens"
       onFieldValuesChange={(fieldValues) => {
-        const model = fieldValues.model?.trim();
-        setSelectedModel(model || '');
+        const model = fieldValues.model?.trim() || '';
+        setSelectedModel((prev) => (prev === model ? prev : model));
       }}
       renderFormExtras={({ tool, fieldValues, setField }) => {
         if (tool.name !== 'ai_caller_call') return null;
