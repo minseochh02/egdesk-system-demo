@@ -8,6 +8,7 @@ import {
   formatFileSize,
   parseMcpResult,
   readFileAsBase64,
+  stringifyPayloadForDisplay,
   type FileFieldPayload,
 } from '@/lib/mcp-utils';
 import { getDemoNavLinks } from '@/lib/demo-pages';
@@ -706,7 +707,7 @@ export function McpPlayground({
                     <div style={{ padding: '0 12px 12px' }}>
                       <div style={{ marginBottom: 8 }}>
                         <div style={miniLabelStyle}>Arguments</div>
-                        <pre style={resultCodeStyle}>{JSON.stringify(entry.args, null, 2)}</pre>
+                        <pre style={resultCodeStyle}>{stringifyPayloadForDisplay(entry.args)}</pre>
                       </div>
                       <div>
                         <div style={miniLabelStyle}>{entry.error ? 'Error' : 'Response'}</div>
@@ -714,7 +715,7 @@ export function McpPlayground({
                           ...resultCodeStyle,
                           ...(entry.error ? { background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' } : {}),
                         }}>
-                          {entry.error ? entry.error : JSON.stringify(entry.result, null, 2)}
+                          {entry.error ? entry.error : stringifyPayloadForDisplay(entry.result)}
                         </pre>
                       </div>
                     </div>
@@ -973,6 +974,7 @@ const resultCodeStyle: React.CSSProperties = {
   padding: 10,
   fontSize: 12,
   lineHeight: 1.5,
+  fontFamily: 'Consolas, "Cascadia Mono", ui-monospace, monospace',
   overflowX: 'auto',
   margin: 0,
   maxHeight: 400,

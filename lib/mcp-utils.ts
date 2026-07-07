@@ -57,3 +57,41 @@ export type FileFieldPayload = {
   size: number;
   base64: string;
 };
+
+const DISPLAY_STRING_MAX = 200;
+
+function estimateBase64Bytes(base64: string): number {
+  const normalized = base64.replace(/\s/g, '');
+  const padding = normalized.endsWith('==') ? 2 : normalized.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.round((normalized.length * 3) / 4) - padding);
+}
+
+function redactDisplayString(value: string): string {
+  const trimmed = value.trim();
+  const dataUrlMatch = trimmed.match(/^data:([^;]+);base64,(.+)$/i);
+  if (dataUrlMatch) {
+    const mime = dataUrlMatch[1];
+    const bytes = estimateBase64Bytes(dataUrlMatch[2]);
+    return `[${mime}, ${formatFileSize(bytes)} — omitted from display]`;
+  }
+
+  if (/^[A-Za-z0-9+/=\s]+$/.test(trimmed)) {
+    const bytes = estimateBase64Bytes(trimmed);
+    return `[base64, ${formatFileSize(bytes)} — omitted from display]`;
+  }
+
+  return `${trimmed.slice(0, DISPLAY_STRING_MAX)}… [${trimmed.length.toLocaleString()} chars — truncated]`;
+}
+
+/** Strip huge base64 blobs before rendering JSON in the playground UI. */
+export function redactBulkyPayloadForDisplay(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value, (_key, entry) => {
+    if (typeof entry !== 'string') return entry;
+    if (entry.length <= DISPLAY_STRING_MAX) return entry;
+    return redactDisplayString(entry);
+  }));
+}
+
+export function stringifyPayloadForDisplay(value: unknown, space = 2): string {
+  return JSON.stringify(redactBulkyPayloadForDisplay(value), null, space);
+}
