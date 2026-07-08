@@ -50,6 +50,7 @@ async function runHelper(helper: string, args: HelperArgs) {
       return updateRows(args.tableName, args.updates, {
         ids: args.ids,
         filters: args.filters,
+        expectedVersion: args.expectedVersion,
       });
 
     case 'deleteRows':
