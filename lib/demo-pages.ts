@@ -15,6 +15,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['queryTable', 'insertRows', 'updateRows', 'searchTable'],
   },
   {
+    title: 'Concurrency Demo',
+    description: 'Interactive demo of _version tracking, optimistic locking with expectedVersion, and conflict detection.',
+    href: '/concurrency',
+    eyebrow: 'Data integrity',
+    items: ['_version', 'expectedVersion', 'conflictDetection', 'WriteMutex'],
+  },
+  {
     title: 'PageIndex MCP',
     description: 'Index PDFs into a hierarchical tree with checkpointed progress, resume interrupted jobs, and fetch page text.',
     href: '/pageindex-mcp',
