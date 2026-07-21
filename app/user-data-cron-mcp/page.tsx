@@ -230,8 +230,8 @@ const TOOLS: PlaygroundToolDef[] = [
 ];
 
 const CATEGORIES = [
-  { id: 'jobs', label: 'Jobs' },
-  { id: 'run', label: 'Run & history' },
+  { key: 'jobs', label: 'Jobs' },
+  { key: 'run', label: 'Run & history' },
 ];
 
 const RUNNING_HINTS: Record<string, string> = {
