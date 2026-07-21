@@ -32,9 +32,14 @@ export default function PubSubMobilePage() {
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_EGDESK_API_URL || 'http://localhost:8080';
     const apiKey = process.env.NEXT_PUBLIC_EGDESK_API_KEY || '';
-    const sseUrl = apiKey
-      ? `${apiUrl}/user-data/sse?key=${encodeURIComponent(apiKey)}`
-      : `${apiUrl}/user-data/sse`;
+    const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID || '';
+    const egdeskEnv = process.env.NEXT_PUBLIC_EGDESK_ENV || '';
+    const sseParams = new URLSearchParams();
+    if (apiKey) sseParams.set('key', apiKey);
+    if (projectId) sseParams.set('egdeskId', projectId);
+    if (egdeskEnv) sseParams.set('environment', egdeskEnv);
+    const sseQuery = sseParams.toString();
+    const sseUrl = `${apiUrl}/user-data/sse${sseQuery ? `?${sseQuery}` : ''}`;
 
     const es = new EventSource(sseUrl);
     eventSourceRef.current = es;
