@@ -15,6 +15,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['queryTable', 'insertRows', 'updateRows', 'searchTable'],
   },
   {
+    title: 'UserData Cron MCP',
+    description: 'Schedule background jobs for sync configs, browser recordings, and DB backups — list, create, run now, and inspect history.',
+    href: '/user-data-cron-mcp',
+    eyebrow: 'Background automation',
+    items: ['listUserDataCronJobs', 'createUserDataCronJob', 'runUserDataCronJobNow'],
+  },
+  {
     title: 'Concurrency Demo',
     description: 'Interactive demo of _version tracking, optimistic locking with expectedVersion, and conflict detection.',
     href: '/concurrency',

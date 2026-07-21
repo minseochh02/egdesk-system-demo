@@ -18,7 +18,7 @@ export default function Home() {
         <div style={eyebrowStyle}>EGDesk System Demo</div>
         <h1 style={titleStyle}>Choose a demo page</h1>
         <p style={introStyle}>
-          This workspace shows the generated EGDesk integration surface: database helpers, PageIndex,
+          This workspace shows the generated EGDesk integration surface: database helpers, UserData cron jobs, PageIndex,
           Gemini key config, Korean law, SEO, local agent AI, FinanceHub, internal knowledge, browser recording, SSL,
           inventory scanner setup, and Kakao MCP helpers.
         </p>

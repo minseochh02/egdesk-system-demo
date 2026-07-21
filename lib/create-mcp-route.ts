@@ -19,6 +19,10 @@ export function createMcpRoute(egdeskPath: string) {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       const apiKey = process.env.NEXT_PUBLIC_EGDESK_API_KEY;
       if (apiKey) headers['X-Api-Key'] = apiKey;
+      const projectId = process.env.NEXT_PUBLIC_EGDESK_PROJECT_ID;
+      if (projectId) headers['X-EGDesk-Project-Id'] = projectId;
+      const egdeskEnv = process.env.NEXT_PUBLIC_EGDESK_ENV;
+      if (egdeskEnv) headers['X-EGDesk-Env'] = egdeskEnv;
 
       const res = await fetch(`${apiUrl}${egdeskPath}`, {
         method: 'POST',
