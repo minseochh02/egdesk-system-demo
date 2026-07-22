@@ -88,6 +88,8 @@ export type McpPlaygroundProps = {
   }) => React.ReactNode;
   /** Insert {@link renderFormExtras} immediately after this field name */
   renderFormExtrasAfterField?: string;
+  /** Where to place extras when {@link renderFormExtrasAfterField} is unset. Default: after fields. */
+  renderFormExtrasPosition?: 'before' | 'after';
   renderRunActions?: (context: {
     tool: PlaygroundToolDef;
     fieldValues: Record<string, string>;
@@ -129,7 +131,13 @@ function buildArgs(
       try {
         args[apiKey] = JSON.parse(raw);
       } catch {
-        args[apiKey] = raw;
+        // Common playground typo: Python-style ['id'] → try normalizing quotes
+        try {
+          const normalized = raw.replace(/'/g, '"');
+          args[apiKey] = JSON.parse(normalized);
+        } catch {
+          args[apiKey] = raw;
+        }
       }
     } else {
       args[apiKey] = raw;
@@ -239,6 +247,7 @@ export function McpPlayground({
   postProcessArgs,
   renderFormExtras,
   renderFormExtrasAfterField,
+  renderFormExtrasPosition = 'after',
   renderRunActions,
   onFieldValuesChange,
 }: McpPlaygroundProps) {
@@ -527,6 +536,14 @@ export function McpPlayground({
             <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 16 }}>{selectedTool.description}</p>
 
             <div style={{ display: 'grid', gap: 12 }}>
+              {!renderFormExtrasAfterField &&
+                renderFormExtrasPosition === 'before' &&
+                renderFormExtras?.({
+                  tool: selectedTool,
+                  fieldValues,
+                  setField,
+                  filePayloads,
+                })}
               {selectedTool.fields.map(field => (
                 <div key={field.name}>
                   <label style={labelStyle}>
@@ -647,7 +664,9 @@ export function McpPlayground({
                   })}
                 </div>
               ))}
-              {!renderFormExtrasAfterField && renderFormExtras?.({
+              {!renderFormExtrasAfterField &&
+                renderFormExtrasPosition === 'after' &&
+                renderFormExtras?.({
                 tool: selectedTool,
                 fieldValues,
                 setField,

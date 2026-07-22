@@ -1,11 +1,41 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
 import {
   McpPlayground,
   playgroundStyles,
   type PlaygroundToolDef,
 } from '@/components/mcp-playground';
+
+const FOLDER_TOOLS = new Set(['drive_init', 'drive_set_target_folders']);
+
+/**
+ * Extract a Drive folder ID from a URL or bare id.
+ * Supports:
+ * - https://drive.google.com/drive/folders/ID
+ * - https://drive.google.com/drive/u/0/folders/ID?...
+ * - https://drive.google.com/open?id=ID
+ * - bare folder id
+ */
+export function extractDriveFolderId(input: string): string | null {
+  const raw = input.trim();
+  if (!raw) return null;
+
+  const foldersMatch = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (foldersMatch?.[1]) return foldersMatch[1];
+
+  try {
+    const url = new URL(raw);
+    const idParam = url.searchParams.get('id');
+    if (idParam && /^[a-zA-Z0-9_-]+$/.test(idParam)) return idParam;
+  } catch {
+    // not a URL
+  }
+
+  if (/^[a-zA-Z0-9_-]{10,}$/.test(raw)) return raw;
+
+  return null;
+}
 
 const TOOLS: PlaygroundToolDef[] = [
   {
@@ -16,14 +46,6 @@ const TOOLS: PlaygroundToolDef[] = [
     category: 'setup',
     helperName: 'initDriveSync',
     fields: [
-      {
-        name: 'folderIds',
-        label: 'Folder IDs (JSON array)',
-        type: 'json',
-        required: true,
-        placeholder: '["1AbC…folderId"]',
-        hint: 'From the Drive folder URL: …/folders/{FOLDER_ID}. Share folders with the service account if using SA credentials.',
-      },
       {
         name: 'snapshot',
         label: 'Snapshot existing files',
@@ -136,15 +158,7 @@ const TOOLS: PlaygroundToolDef[] = [
     description: 'Replace monitored folder IDs without resetting the page token.',
     category: 'setup',
     helperName: 'setDriveTargetFolders',
-    fields: [
-      {
-        name: 'folderIds',
-        label: 'Folder IDs (JSON array)',
-        type: 'json',
-        required: true,
-        placeholder: '["1AbC…folderId"]',
-      },
-    ],
+    fields: [],
   },
 ];
 
@@ -173,16 +187,153 @@ type DriveEvent = {
   download_path?: string | null;
 };
 
+const pickerLabelStyle: CSSProperties = {
+  display: 'block',
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#374151',
+  marginBottom: 6,
+};
+
+const pickerInputStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  border: '1px solid #d1d5db',
+  borderRadius: 8,
+  padding: '8px 10px',
+  fontSize: 13,
+  color: '#111827',
+  background: '#fff',
+};
+
+const chipStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '4px 8px',
+  borderRadius: 999,
+  background: '#ecfdf5',
+  border: '1px solid #a7f3d0',
+  color: '#065f46',
+  fontSize: 12,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+};
+
+function DriveFolderPicker({
+  folderIds,
+  onChange,
+}: {
+  folderIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const addFolder = useCallback(() => {
+    const id = extractDriveFolderId(draft);
+    if (!id) {
+      setError('Paste a Drive folder URL or folder ID (…/folders/ID).');
+      return;
+    }
+    if (folderIds.includes(id)) {
+      setError('That folder is already added.');
+      return;
+    }
+    onChange([...folderIds, id]);
+    setDraft('');
+    setError(null);
+  }, [draft, folderIds, onChange]);
+
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    addFolder();
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addFolder();
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <label style={pickerLabelStyle}>
+        Drive folders <span style={{ color: '#dc2626' }}>*</span>
+      </label>
+      <form onSubmit={onSubmit} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (error) setError(null);
+          }}
+          onKeyDown={onKeyDown}
+          placeholder="Paste folder URL — https://drive.google.com/drive/folders/…"
+          style={pickerInputStyle}
+          autoComplete="off"
+        />
+        <button
+          type="submit"
+          style={{
+            ...playgroundStyles.secondaryBtnStyle,
+            flexShrink: 0,
+            background: '#0f766e',
+            color: '#fff',
+            borderColor: '#0f766e',
+          }}
+        >
+          Add
+        </button>
+      </form>
+      <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 10px', lineHeight: 1.45 }}>
+        Paste a Google Drive folder link or bare folder ID, then Add. You can monitor multiple folders.
+      </p>
+      {error && (
+        <p style={{ fontSize: 12, color: '#dc2626', margin: '0 0 8px' }}>{error}</p>
+      )}
+      {folderIds.length > 0 ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {folderIds.map((id) => (
+            <span key={id} style={chipStyle}>
+              {id}
+              <button
+                type="button"
+                onClick={() => onChange(folderIds.filter((x) => x !== id))}
+                aria-label={`Remove folder ${id}`}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#047857',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: 14,
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>No folders added yet.</p>
+      )}
+    </div>
+  );
+}
+
 export default function DrivePlayground() {
-  const [folderIdsHint, setFolderIdsHint] = useState<string | null>(null);
+  const [folderIds, setFolderIds] = useState<string[]>([]);
   const [channelStatus, setChannelStatus] = useState<string | null>(null);
 
   const onResult = useCallback((tool: string, parsed: any) => {
     if (Array.isArray(parsed?.targetFolderIds) && parsed.targetFolderIds.length) {
-      setFolderIdsHint(JSON.stringify(parsed.targetFolderIds));
+      setFolderIds(parsed.targetFolderIds.map(String));
     }
-    if (parsed?.sync?.targetFolderIds?.length) {
-      setFolderIdsHint(JSON.stringify(parsed.sync.targetFolderIds));
+    if (Array.isArray(parsed?.sync?.targetFolderIds) && parsed.sync.targetFolderIds.length) {
+      setFolderIds(parsed.sync.targetFolderIds.map(String));
     }
     if (parsed?.channel?.status) {
       setChannelStatus(String(parsed.channel.status));
@@ -192,15 +343,30 @@ export default function DrivePlayground() {
     }
   }, []);
 
-  const getDefaultFieldValues = useCallback(
+  const validateBeforeRun = useCallback(
     (tool: PlaygroundToolDef) => {
-      if (!folderIdsHint) return {};
-      if (tool.fields.some((f) => f.name === 'folderIds')) {
-        return { folderIds: folderIdsHint };
+      if (FOLDER_TOOLS.has(tool.name) && folderIds.length === 0) {
+        return 'Add at least one Drive folder (paste a folder URL and click Add).';
       }
-      return {};
+      return null;
     },
-    [folderIdsHint]
+    [folderIds]
+  );
+
+  const postProcessArgs = useCallback(
+    (args: Record<string, any>, context: { tool: PlaygroundToolDef }) => {
+      if (!FOLDER_TOOLS.has(context.tool.name)) return args;
+      return { ...args, folderIds };
+    },
+    [folderIds]
+  );
+
+  const renderFormExtras = useCallback(
+    (context: { tool: PlaygroundToolDef }) => {
+      if (!FOLDER_TOOLS.has(context.tool.name)) return null;
+      return <DriveFolderPicker folderIds={folderIds} onChange={setFolderIds} />;
+    },
+    [folderIds]
   );
 
   const renderDisplay = useCallback((data: any) => {
@@ -374,17 +540,25 @@ export default function DrivePlayground() {
     return null;
   }, []);
 
+  const sessionFolders = useMemo(() => folderIds, [folderIds]);
+
   const sessionBar = (
     <div style={playgroundStyles.sessionBarStyle}>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={playgroundStyles.miniLabelStyle}>Target folders</div>
-        <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '4px 0 0' }}>
-          {folderIdsHint ? (
-            <code style={playgroundStyles.inlineCodeStyle}>{folderIdsHint}</code>
-          ) : (
-            'Run Init or Status first'
-          )}
-        </p>
+        {sessionFolders.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+            {sessionFolders.map((id) => (
+              <code key={id} style={{ ...playgroundStyles.inlineCodeStyle, fontSize: 12 }}>
+                {id}
+              </code>
+            ))}
+          </div>
+        ) : (
+          <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '4px 0 0' }}>
+            Paste a Drive folder URL on Init / Set folders
+          </p>
+        )}
       </div>
       <div>
         <div style={playgroundStyles.miniLabelStyle}>Channel</div>
@@ -409,7 +583,10 @@ export default function DrivePlayground() {
       sessionBar={sessionBar}
       renderDisplay={renderDisplay}
       onResult={onResult}
-      getDefaultFieldValues={getDefaultFieldValues}
+      renderFormExtras={renderFormExtras}
+      renderFormExtrasPosition="before"
+      postProcessArgs={postProcessArgs}
+      validateBeforeRun={validateBeforeRun}
     />
   );
 }
