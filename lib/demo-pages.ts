@@ -36,6 +36,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['indexPageIndexPdf', 'resumePageIndexDocument', 'getPageIndexStructure'],
   },
   {
+    title: 'Drive MCP',
+    description: 'Watch or poll Google Drive folder changes, inspect sync status, and list file events.',
+    href: '/drive-mcp',
+    eyebrow: 'Drive sync',
+    items: ['initDriveSync', 'watchDriveChanges', 'pollDriveChanges', 'getDriveStatus'],
+  },
+  {
     title: 'EGDesk Config MCP',
     description: 'Fetch or save AI provider API keys (Google, OpenAI, Anthropic, Azure) in AI Keys Manager.',
     href: '/egdesk-config-mcp',
