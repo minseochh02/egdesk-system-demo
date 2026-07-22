@@ -1103,6 +1103,7 @@ export const playgroundStyles = {
   sessionPillsStyle,
   statusBadgeStyle,
   miniLabelStyle,
+  displayPanelStyle,
   tableWrapStyle,
   tableStyle,
   thStyle,

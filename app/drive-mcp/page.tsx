@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useMemo, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
 import {
   McpPlayground,
   playgroundStyles,
   type PlaygroundToolDef,
 } from '@/components/mcp-playground';
+import { apiFetch } from '@/lib/api';
+import { parseMcpResult } from '@/lib/mcp-utils';
 
 const FOLDER_TOOLS = new Set(['drive_init', 'drive_set_target_folders']);
 
@@ -42,7 +44,7 @@ const TOOLS: PlaygroundToolDef[] = [
     name: 'drive_init',
     title: 'Init sync',
     description:
-      'Create local Drive tables, set start page token, and set folders to monitor. Optionally snapshot existing files. Auth: GOOGLE_SERVICE_ACCOUNT_JSON or Google Workspace sign-in in EGDesk.',
+      'Save folders to watch (local drive.db) and set the change cursor. After this, use the Live feed → Start listening.',
     category: 'setup',
     helperName: 'initDriveSync',
     fields: [
@@ -50,8 +52,8 @@ const TOOLS: PlaygroundToolDef[] = [
         name: 'snapshot',
         label: 'Snapshot existing files',
         type: 'boolean',
-        defaultValue: true,
-        hint: 'Log/download files already in the folders. Set false for forward-only change cursor.',
+        defaultValue: false,
+        hint: 'Usually leave off for a live demo so only new uploads show up as events.',
       },
       {
         name: 'downloadPath',
@@ -69,44 +71,49 @@ const TOOLS: PlaygroundToolDef[] = [
     ],
   },
   {
-    name: 'drive_watch',
-    title: 'Start watch',
+    name: 'drive_set_target_folders',
+    title: 'Set folders',
+    description: 'Replace monitored folder IDs without resetting the page token.',
+    category: 'setup',
+    helperName: 'setDriveTargetFolders',
+    fields: [],
+  },
+  {
+    name: 'drive_start_poll_loop',
+    title: 'Keep watching',
     description:
-      'Register drive.changes.watch. Google will POST to {webhookBaseUrl}/drive/webhook. Requires a public tunnel URL and prior Init.',
-    category: 'watch',
-    helperName: 'watchDriveChanges',
+      'Start continuous Drive polling (saved + auto-resumes). Prefer the Live feed Start listening button above for the demo.',
+    category: 'live',
+    helperName: 'startDrivePollLoop',
     fields: [
       {
-        name: 'webhookBaseUrl',
-        label: 'Webhook base URL',
-        type: 'string',
-        required: true,
-        placeholder: 'https://your-tunnel.example',
-        hint: 'EGDesk tunnel / ngrok / Cloudflare public base (no /drive path).',
+        name: 'intervalSeconds',
+        label: 'Interval (seconds)',
+        type: 'number',
+        defaultValue: 15,
+        hint: 'Minimum 15. Use 15 for demos so uploads show up quickly.',
       },
       {
-        name: 'ttlSeconds',
-        label: 'TTL seconds (optional)',
-        type: 'number',
-        placeholder: '86400',
-        hint: 'Google max ~7 days. Omit for Google default.',
+        name: 'download',
+        label: 'Download matching files',
+        type: 'boolean',
+        defaultValue: true,
       },
     ],
   },
   {
-    name: 'drive_stop',
-    title: 'Stop watch',
-    description: 'Stop the active watch channel and clear channel fields.',
-    category: 'watch',
-    helperName: 'stopDriveWatch',
+    name: 'drive_stop_poll_loop',
+    title: 'Stop watching',
+    description: 'Stop the continuous poll loop. Folder IDs and page token remain saved.',
+    category: 'live',
+    helperName: 'stopDrivePollLoop',
     fields: [],
   },
   {
     name: 'drive_poll',
     title: 'Poll once',
-    description:
-      'One-shot changes.list from the stored page token. Use for local monitoring without a tunnel.',
-    category: 'sync',
+    description: 'One-shot changes.list. The Live feed also polls while listening.',
+    category: 'live',
     helperName: 'pollDriveChanges',
     fields: [
       {
@@ -120,9 +127,17 @@ const TOOLS: PlaygroundToolDef[] = [
   {
     name: 'drive_status',
     title: 'Status',
-    description: 'Sync state, watch channel expiry, mode, and event counts.',
+    description: 'Sync state, watched folders (with names), poll loop, and event counts.',
     category: 'browse',
     helperName: 'getDriveStatus',
+    fields: [],
+  },
+  {
+    name: 'drive_list_watched_folders',
+    title: 'List watched folders',
+    description: 'Show every folder currently configured for watching, with Drive names and URLs.',
+    category: 'browse',
+    helperName: 'listDriveWatchedFolders',
     fields: [],
   },
   {
@@ -153,27 +168,61 @@ const TOOLS: PlaygroundToolDef[] = [
     ],
   },
   {
-    name: 'drive_set_target_folders',
-    title: 'Set folders',
-    description: 'Replace monitored folder IDs without resetting the page token.',
-    category: 'setup',
-    helperName: 'setDriveTargetFolders',
+    name: 'drive_watch',
+    title: 'Start webhook',
+    description:
+      'Advanced: drive.changes.watch via public tunnel. For local demos, use Live → Start listening instead.',
+    category: 'advanced',
+    helperName: 'watchDriveChanges',
+    fields: [
+      {
+        name: 'webhookBaseUrl',
+        label: 'Webhook base URL',
+        type: 'string',
+        required: true,
+        placeholder: 'https://your-tunnel.example',
+        hint: 'EGDesk tunnel / ngrok / Cloudflare public base (no /drive path).',
+      },
+      {
+        name: 'ttlSeconds',
+        label: 'TTL seconds (optional)',
+        type: 'number',
+        placeholder: '86400',
+        hint: 'Google max ~7 days. Omit for Google default.',
+      },
+    ],
+  },
+  {
+    name: 'drive_stop',
+    title: 'Stop webhook',
+    description: 'Stop the active Drive watch channel and clear channel fields.',
+    category: 'advanced',
+    helperName: 'stopDriveWatch',
     fields: [],
   },
 ];
 
 const CATEGORIES = [
   { key: 'setup', label: 'Setup' },
-  { key: 'watch', label: 'Watch' },
-  { key: 'sync', label: 'Sync' },
+  { key: 'live', label: 'Live' },
   { key: 'browse', label: 'Browse' },
+  { key: 'advanced', label: 'Advanced' },
 ];
 
 const RUNNING_HINTS: Record<string, string> = {
-  drive_init: 'Fetching start page token and optionally snapshotting folders…',
+  drive_init: 'Saving folders and change cursor…',
   drive_watch: 'Registering Google Drive watch channel…',
   drive_poll: 'Listing and processing Drive changes…',
+  drive_start_poll_loop: 'Starting continuous poll loop…',
   drive_list_events: 'Loading file events…',
+  drive_list_watched_folders: 'Resolving folder names…',
+};
+
+type WatchedFolder = {
+  id: string;
+  name?: string | null;
+  url?: string;
+  error?: string | null;
 };
 
 type DriveEvent = {
@@ -326,11 +375,192 @@ function DriveFolderPicker({
 
 export default function DrivePlayground() {
   const [folderIds, setFolderIds] = useState<string[]>([]);
+  const [watchedFolders, setWatchedFolders] = useState<WatchedFolder[]>([]);
   const [channelStatus, setChannelStatus] = useState<string | null>(null);
+  const [pollLoopLabel, setPollLoopLabel] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
+  const [liveEvents, setLiveEvents] = useState<DriveEvent[]>([]);
+  const [newEventKeys, setNewEventKeys] = useState<Set<string>>(new Set());
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [liveBusy, setLiveBusy] = useState(false);
+  const [lastTickAt, setLastTickAt] = useState<string | null>(null);
+  const knownEventKeys = useRef<Set<string>>(new Set());
+  const listeningRef = useRef(false);
+
+  const callDriveTool = useCallback(async (tool: string, args: Record<string, any> = {}) => {
+    const res = await apiFetch('/api/drive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool, arguments: args }),
+    });
+    const raw = await res.json();
+    return parseMcpResult(raw);
+  }, []);
+
+  const applyWatchedFolders = useCallback((folders: WatchedFolder[]) => {
+    setWatchedFolders(folders);
+    setFolderIds(folders.map((f) => f.id).filter(Boolean));
+  }, []);
+
+  const eventKey = (event: DriveEvent) =>
+    `${event.id ?? ''}:${event.file_id ?? ''}:${event.detected_at ?? ''}:${event.event_type ?? ''}`;
+
+  const ingestEvents = useCallback((events: DriveEvent[], markNew: boolean) => {
+    const nextKeys = new Set<string>();
+    const freshlySeen: string[] = [];
+    for (const event of events) {
+      const key = eventKey(event);
+      nextKeys.add(key);
+      if (markNew && !knownEventKeys.current.has(key)) {
+        freshlySeen.push(key);
+      }
+    }
+    knownEventKeys.current = nextKeys;
+    setLiveEvents(events);
+    if (freshlySeen.length > 0) {
+      setNewEventKeys(new Set(freshlySeen));
+      window.setTimeout(() => {
+        setNewEventKeys((prev) => {
+          const copy = new Set(prev);
+          for (const key of freshlySeen) copy.delete(key);
+          return copy;
+        });
+      }, 4000);
+    }
+  }, []);
+
+  const refreshLiveFeed = useCallback(async (opts?: { pollFirst?: boolean }) => {
+    try {
+      if (opts?.pollFirst) {
+        await callDriveTool('drive_poll', { download: true });
+      }
+      const events = await callDriveTool('drive_list_events', { limit: 30 });
+      const list = Array.isArray(events) ? events : [];
+      ingestEvents(list, true);
+      setLastTickAt(new Date().toLocaleTimeString());
+      setLiveError(null);
+    } catch (err: any) {
+      setLiveError(err?.message || String(err));
+    }
+  }, [callDriveTool, ingestEvents]);
+
+  const startListening = useCallback(async () => {
+    setLiveBusy(true);
+    setLiveError(null);
+    try {
+      const started = await callDriveTool('drive_start_poll_loop', {
+        intervalSeconds: 15,
+        download: true,
+      });
+      setListening(true);
+      listeningRef.current = true;
+      setPollLoopLabel(`every ${started?.intervalSeconds ?? 15}s`);
+      if (Array.isArray(started?.targetFolderIds)) {
+        setFolderIds(started.targetFolderIds.map(String));
+      }
+      // Seed feed without marking everything as "new"
+      const events = await callDriveTool('drive_list_events', { limit: 30 });
+      const list = Array.isArray(events) ? events : [];
+      knownEventKeys.current = new Set(list.map(eventKey));
+      setLiveEvents(list);
+      setNewEventKeys(new Set());
+      setLastTickAt(new Date().toLocaleTimeString());
+      // Also resolve folder names
+      try {
+        const foldersResult = await callDriveTool('drive_list_watched_folders', {});
+        if (Array.isArray(foldersResult?.folders)) {
+          applyWatchedFolders(foldersResult.folders);
+        }
+      } catch {
+        // optional
+      }
+    } catch (err: any) {
+      setLiveError(err?.message || String(err));
+      setListening(false);
+      listeningRef.current = false;
+    } finally {
+      setLiveBusy(false);
+    }
+  }, [applyWatchedFolders, callDriveTool]);
+
+  const stopListening = useCallback(async () => {
+    setLiveBusy(true);
+    setLiveError(null);
+    try {
+      await callDriveTool('drive_stop_poll_loop', {});
+      setListening(false);
+      listeningRef.current = false;
+      setPollLoopLabel('off');
+    } catch (err: any) {
+      setLiveError(err?.message || String(err));
+    } finally {
+      setLiveBusy(false);
+    }
+  }, [callDriveTool]);
+
+  // While listening: refresh UI from drive.db every 4s (backend poll loop does Drive API)
+  useEffect(() => {
+    if (!listening) return;
+    const id = window.setInterval(() => {
+      if (!listeningRef.current) return;
+      void refreshLiveFeed({ pollFirst: false });
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [listening, refreshLiveFeed]);
+
+  // On mount: restore status + folders + events
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await callDriveTool('drive_status', {});
+        if (cancelled) return;
+        if (Array.isArray(status?.sync?.watchedFolders)) {
+          applyWatchedFolders(status.sync.watchedFolders);
+        } else if (Array.isArray(status?.sync?.targetFolderIds)) {
+          setFolderIds(status.sync.targetFolderIds.map(String));
+        }
+        if (status?.channel?.status) setChannelStatus(String(status.channel.status));
+        if (status?.pollLoop?.running) {
+          setListening(true);
+          listeningRef.current = true;
+          setPollLoopLabel(`every ${status.pollLoop.intervalSec ?? '?'}s`);
+        } else if (status?.pollLoop) {
+          setPollLoopLabel('off');
+        }
+        const events = await callDriveTool('drive_list_events', { limit: 30 });
+        if (cancelled) return;
+        const list = Array.isArray(events) ? events : [];
+        knownEventKeys.current = new Set(list.map(eventKey));
+        setLiveEvents(list);
+      } catch {
+        // EGDesk may not be running yet
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyWatchedFolders, callDriveTool]);
 
   const onResult = useCallback((tool: string, parsed: any) => {
+    if (Array.isArray(parsed?.folders) && parsed.folders[0]?.id) {
+      applyWatchedFolders(parsed.folders);
+    }
+    if (Array.isArray(parsed?.sync?.watchedFolders) && parsed.sync.watchedFolders.length) {
+      applyWatchedFolders(parsed.sync.watchedFolders);
+    }
     if (Array.isArray(parsed?.targetFolderIds) && parsed.targetFolderIds.length) {
       setFolderIds(parsed.targetFolderIds.map(String));
+      setWatchedFolders((prev) => {
+        const byId = new Map(prev.map((f) => [f.id, f]));
+        return parsed.targetFolderIds.map((id: string) =>
+          byId.get(id) || {
+            id: String(id),
+            name: null,
+            url: `https://drive.google.com/drive/folders/${id}`,
+          }
+        );
+      });
     }
     if (Array.isArray(parsed?.sync?.targetFolderIds) && parsed.sync.targetFolderIds.length) {
       setFolderIds(parsed.sync.targetFolderIds.map(String));
@@ -341,7 +571,32 @@ export default function DrivePlayground() {
     if (parsed?.status === 'watching' || parsed?.status === 'stopped') {
       setChannelStatus(parsed.status === 'watching' ? 'active' : 'none');
     }
-  }, []);
+    if (parsed?.pollLoop) {
+      const running = Boolean(parsed.pollLoop.running);
+      setListening(running);
+      listeningRef.current = running;
+      setPollLoopLabel(
+        running ? `every ${parsed.pollLoop.intervalSec ?? '?'}s` : 'off'
+      );
+    }
+    if (parsed?.status === 'polling') {
+      setListening(true);
+      listeningRef.current = true;
+      setPollLoopLabel(`every ${parsed.intervalSeconds ?? '?'}s`);
+    }
+    if (tool === 'drive_stop_poll_loop' && parsed?.status === 'stopped') {
+      setListening(false);
+      listeningRef.current = false;
+      setPollLoopLabel('off');
+    }
+    if (tool === 'drive_init' && parsed?.status === 'initialized') {
+      // After init, nudge user toward live listening (don't auto-start — OAuth may need attention)
+      setPollLoopLabel((prev) => prev || 'ready — click Start listening');
+    }
+    if (Array.isArray(parsed) && parsed[0]?.file_id) {
+      ingestEvents(parsed, true);
+    }
+  }, [applyWatchedFolders, ingestEvents]);
 
   const validateBeforeRun = useCallback(
     (tool: PlaygroundToolDef) => {
@@ -382,19 +637,95 @@ export default function DrivePlayground() {
       kvDescStyle,
     } = playgroundStyles;
 
-    if (data?.sync || data?.channel || data?.events) {
+    if (data?.sync || data?.channel || data?.events || Array.isArray(data?.folders)) {
+      const folders: WatchedFolder[] = Array.isArray(data?.folders)
+        ? data.folders
+        : Array.isArray(data?.sync?.watchedFolders)
+          ? data.sync.watchedFolders
+          : [];
+
       return (
-        <dl style={kvGridStyle}>
+        <div style={{ display: 'grid', gap: 16 }}>
+          {folders.length > 0 && (
+            <div>
+              <div style={miniLabelStyle}>Watched folders ({folders.length})</div>
+              <div style={tableWrapStyle}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Name</th>
+                      <th style={thStyle}>Folder ID</th>
+                      <th style={thStyle}>Open</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {folders.map((folder) => (
+                      <tr key={folder.id}>
+                        <td style={tdStyle}>
+                          {folder.name || (
+                            <span style={{ color: '#9ca3af' }}>{folder.error || 'Unknown'}</span>
+                          )}
+                        </td>
+                        <td style={tdStyle}>
+                          <code style={inlineCodeStyle}>{folder.id}</code>
+                        </td>
+                        <td style={tdStyle}>
+                          {folder.url && (
+                            <a
+                              href={folder.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: '#0f766e', fontSize: 13 }}
+                            >
+                              Drive ↗
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <dl style={kvGridStyle}>
           {data.status && (
             <>
               <dt style={kvTermStyle}>Status</dt>
               <dd style={kvDescStyle}>{data.status}</dd>
             </>
           )}
+          {data.message && !data.sync && (
+            <>
+              <dt style={kvTermStyle}>Message</dt>
+              <dd style={kvDescStyle}>{data.message}</dd>
+            </>
+          )}
           {data.sync?.mode && (
             <>
               <dt style={kvTermStyle}>Mode</dt>
               <dd style={kvDescStyle}>{data.sync.mode}</dd>
+            </>
+          )}
+          {data.sync?.dbPath && (
+            <>
+              <dt style={kvTermStyle}>Saved DB</dt>
+              <dd style={kvDescStyle}>
+                <code style={inlineCodeStyle}>{data.sync.dbPath}</code>
+              </dd>
+            </>
+          )}
+          {data.pollLoop && (
+            <>
+              <dt style={kvTermStyle}>Poll loop</dt>
+              <dd style={kvDescStyle}>
+                {data.pollLoop.running
+                  ? `running · every ${data.pollLoop.intervalSec ?? '?'}s`
+                  : 'off'}
+                {data.pollLoop.lastPollAt ? ` · last ${data.pollLoop.lastPollAt}` : ''}
+                {data.pollLoop.lastError ? ` · error: ${data.pollLoop.lastError}` : ''}
+              </dd>
             </>
           )}
           {data.channel?.status && (
@@ -415,16 +746,6 @@ export default function DrivePlayground() {
               </dd>
             </>
           )}
-          {Array.isArray(data.sync?.targetFolderIds) && (
-            <>
-              <dt style={kvTermStyle}>Folders</dt>
-              <dd style={kvDescStyle}>
-                <code style={inlineCodeStyle}>
-                  {JSON.stringify(data.sync.targetFolderIds)}
-                </code>
-              </dd>
-            </>
-          )}
           {data.sync?.webhookUrl && (
             <>
               <dt style={kvTermStyle}>Webhook</dt>
@@ -440,6 +761,7 @@ export default function DrivePlayground() {
             </>
           )}
         </dl>
+        </div>
       );
     }
 
@@ -484,13 +806,27 @@ export default function DrivePlayground() {
       );
     }
 
-    if (data?.webhookUrl || data?.channelId || data?.status === 'initialized') {
+    if (data?.webhookUrl || data?.channelId || data?.status === 'initialized' || data?.status === 'polling') {
       return (
         <dl style={kvGridStyle}>
           {data.status && (
             <>
               <dt style={kvTermStyle}>Status</dt>
               <dd style={kvDescStyle}>{data.status}</dd>
+            </>
+          )}
+          {data.savedTo && (
+            <>
+              <dt style={kvTermStyle}>Saved to</dt>
+              <dd style={kvDescStyle}>
+                <code style={inlineCodeStyle}>{data.savedTo}</code>
+              </dd>
+            </>
+          )}
+          {typeof data.intervalSeconds === 'number' && (
+            <>
+              <dt style={kvTermStyle}>Interval</dt>
+              <dd style={kvDescStyle}>{data.intervalSeconds}s</dd>
             </>
           )}
           {data.channelId && (
@@ -540,31 +876,185 @@ export default function DrivePlayground() {
     return null;
   }, []);
 
-  const sessionFolders = useMemo(() => folderIds, [folderIds]);
+  const canListen = folderIds.length > 0 || watchedFolders.length > 0;
 
   const sessionBar = (
-    <div style={playgroundStyles.sessionBarStyle}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={playgroundStyles.miniLabelStyle}>Target folders</div>
-        {sessionFolders.length > 0 ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-            {sessionFolders.map((id) => (
-              <code key={id} style={{ ...playgroundStyles.inlineCodeStyle, fontSize: 12 }}>
-                {id}
-              </code>
-            ))}
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div
+        style={{
+          ...playgroundStyles.sessionBarStyle,
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          gap: 14,
+          borderColor: listening ? '#99f6e4' : '#e5e7eb',
+          background: listening ? '#f0fdfa' : '#f9fafb',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div>
+            <div style={playgroundStyles.miniLabelStyle}>Live feed</div>
+            <p style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: listening ? '#10b981' : '#9ca3af',
+                  boxShadow: listening ? '0 0 0 4px rgba(16,185,129,0.2)' : 'none',
+                  display: 'inline-block',
+                }}
+              />
+              {listening ? `Listening ${pollLoopLabel || ''}` : 'Not listening'}
+            </p>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0', lineHeight: 1.45 }}>
+              {listening
+                ? 'Upload a file into a watched Drive folder — new events appear below within ~15s.'
+                : '1) Init sync with a folder  2) Start listening  3) Upload a file in Drive'}
+            </p>
           </div>
-        ) : (
-          <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '4px 0 0' }}>
-            Paste a Drive folder URL on Init / Set folders
-          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {!listening ? (
+              <button
+                type="button"
+                onClick={() => void startListening()}
+                disabled={liveBusy || !canListen}
+                style={{
+                  ...playgroundStyles.secondaryBtnStyle,
+                  background: canListen ? '#0f766e' : '#9ca3af',
+                  color: '#fff',
+                  borderColor: canListen ? '#0f766e' : '#9ca3af',
+                  opacity: liveBusy ? 0.7 : 1,
+                }}
+                title={canListen ? 'Start poll loop + live event feed' : 'Init a folder first'}
+              >
+                {liveBusy ? 'Starting…' : 'Start listening'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void stopListening()}
+                disabled={liveBusy}
+                style={{ ...playgroundStyles.secondaryBtnStyle, opacity: liveBusy ? 0.7 : 1 }}
+              >
+                {liveBusy ? 'Stopping…' : 'Stop listening'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void refreshLiveFeed({ pollFirst: true })}
+              disabled={liveBusy}
+              style={playgroundStyles.secondaryBtnStyle}
+            >
+              Check now
+            </button>
+          </div>
+        </div>
+
+        {liveError && (
+          <p style={{ fontSize: 13, color: '#dc2626', margin: 0 }}>{liveError}</p>
         )}
+
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: '#6b7280' }}>
+          <span>Last refresh: {lastTickAt || '—'}</span>
+          <span>Webhook channel: {channelStatus || '—'}</span>
+          <span>Events: {liveEvents.length}</span>
+        </div>
+
+        <div>
+          <div style={playgroundStyles.miniLabelStyle}>
+            Watched folders ({watchedFolders.length || folderIds.length})
+          </div>
+          {(watchedFolders.length > 0 || folderIds.length > 0) ? (
+            <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+              {(watchedFolders.length > 0
+                ? watchedFolders
+                : folderIds.map((id) => ({
+                    id,
+                    name: null as string | null,
+                    url: `https://drive.google.com/drive/folders/${id}`,
+                  }))
+              ).map((folder) => (
+                <div
+                  key={folder.id}
+                  style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}
+                >
+                  <strong style={{ color: '#111827' }}>{folder.name || 'Folder'}</strong>
+                  <code style={{ ...playgroundStyles.inlineCodeStyle, fontSize: 11 }}>{folder.id}</code>
+                  {folder.url && (
+                    <a href={folder.url} target="_blank" rel="noreferrer" style={{ color: '#0f766e' }}>
+                      Open in Drive ↗
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: 14, color: '#6b7280', margin: '6px 0 0' }}>
+              Add a folder under Setup → Init sync first.
+            </p>
+          )}
+        </div>
       </div>
-      <div>
-        <div style={playgroundStyles.miniLabelStyle}>Channel</div>
-        <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '4px 0 0' }}>
-          {channelStatus || '—'}
-        </p>
+
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #e5e7eb',
+          borderRadius: 10,
+          padding: 14,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827' }}>Incoming file events</h3>
+          {listening && (
+            <span style={{ fontSize: 12, color: '#0f766e', fontWeight: 600 }}>live</span>
+          )}
+        </div>
+        {liveEvents.length === 0 ? (
+          <p style={{ margin: 0, fontSize: 13, color: '#9ca3af', lineHeight: 1.5 }}>
+            No events yet. After Start listening, upload any file into the watched Drive folder and watch it show up here.
+          </p>
+        ) : (
+          <div style={playgroundStyles.tableWrapStyle}>
+            <table style={playgroundStyles.tableStyle}>
+              <thead>
+                <tr>
+                  <th style={playgroundStyles.thStyle}>When</th>
+                  <th style={playgroundStyles.thStyle}>File</th>
+                  <th style={playgroundStyles.thStyle}>Type</th>
+                  <th style={playgroundStyles.thStyle}>Downloaded</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liveEvents.map((event) => {
+                  const key = `${event.id ?? ''}:${event.file_id ?? ''}:${event.detected_at ?? ''}:${event.event_type ?? ''}`;
+                  const isNew = newEventKeys.has(key);
+                  return (
+                    <tr
+                      key={key}
+                      style={isNew ? { background: '#ecfdf5' } : undefined}
+                    >
+                      <td style={playgroundStyles.tdStyle}>
+                        {isNew && (
+                          <span style={{ color: '#059669', fontWeight: 700, marginRight: 6 }}>NEW</span>
+                        )}
+                        {event.detected_at || '—'}
+                      </td>
+                      <td style={playgroundStyles.tdStyle}>
+                        <div>{event.file_name || '—'}</div>
+                        <code style={{ ...playgroundStyles.inlineCodeStyle, fontSize: 11 }}>
+                          {event.file_id}
+                        </code>
+                      </td>
+                      <td style={playgroundStyles.tdStyle}>{event.event_type || '—'}</td>
+                      <td style={playgroundStyles.tdStyle}>{event.downloaded ? 'yes' : 'no'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -574,7 +1064,7 @@ export default function DrivePlayground() {
       currentHref="/drive-mcp"
       eyebrow="EGDesk Drive MCP"
       title="Drive Playground"
-      subtitle="Watch or poll Google Drive folder changes. Prefer Poll for local; Watch needs a public tunnel to /drive/webhook."
+      subtitle="Init a folder, Start listening, then upload a file in Google Drive — the live feed below updates as events arrive."
       apiPath="/api/drive"
       tools={TOOLS}
       categories={CATEGORIES}
