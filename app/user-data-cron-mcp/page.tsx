@@ -52,7 +52,7 @@ const TOOLS: PlaygroundToolDef[] = [
         label: 'Action',
         type: 'select',
         required: true,
-        options: ['sync_config', 'browser_recording', 'backup'],
+        options: ['sync_config', 'browser_recording', 'backup', 'script'],
         defaultValue: 'backup',
       },
       {
@@ -70,11 +70,40 @@ const TOOLS: PlaygroundToolDef[] = [
         hint: 'Preferred for browser_recording',
       },
       {
+        name: 'scriptPath',
+        label: 'User script path (flat)',
+        type: 'string',
+        placeholder: '/abs/path/to/job.mjs',
+        hint: 'For actionType=script — .js / .mjs / .cjs exporting run(ctx)',
+      },
+      {
+        name: 'functionName',
+        label: 'Export name',
+        type: 'string',
+        placeholder: 'run',
+        defaultValue: 'run',
+        hint: 'Function export to call (default run)',
+      },
+      {
+        name: 'args',
+        label: 'Script args (JSON)',
+        type: 'json',
+        placeholder: '{}',
+        defaultValue: '{}',
+        hint: 'Passed to the script as ctx.args',
+      },
+      {
+        name: 'timeoutMs',
+        label: 'Timeout (ms)',
+        type: 'number',
+        defaultValue: 300000,
+      },
+      {
         name: 'actionPayload',
         label: 'Action payload (JSON, optional)',
         type: 'json',
         placeholder: '{}',
-        hint: 'Optional. Prefer syncConfigId / testPath fields above.',
+        hint: 'Optional. Prefer syncConfigId / testPath / scriptPath fields above.',
         defaultValue: '{}',
       },
       {
@@ -344,7 +373,7 @@ export default function UserDataCronMcpPage() {
       currentHref="/user-data-cron-mcp"
       eyebrow="EGDesk UserData Cron MCP"
       title="UserData Cron Jobs Playground"
-      subtitle="Schedule background automation for this project: sync downloads, run browser recordings, or back up the UserData DB. Same engine as EGDesk → User Data → Cron Jobs."
+      subtitle="Schedule background automation for this project: sync downloads, run browser recordings, run your own .js/.mjs scripts, or back up the UserData DB. Same engine as EGDesk → User Data → Cron Jobs."
       apiPath="/api/user-data-cron"
       tools={TOOLS}
       categories={CATEGORIES}

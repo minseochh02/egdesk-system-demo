@@ -22,6 +22,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['listUserDataCronJobs', 'createUserDataCronJob', 'runUserDataCronJobNow'],
   },
   {
+    title: 'UserData Queue MCP',
+    description: 'Durable enqueue + worker with retries for the same actions as cron — enqueue, cancel, retry, run now, and inspect runs.',
+    href: '/user-data-queue-mcp',
+    eyebrow: 'Background automation',
+    items: ['enqueueUserDataQueueJob', 'listUserDataQueueJobs', 'runUserDataQueueJobNow'],
+  },
+  {
     title: 'Concurrency Demo',
     description: 'Interactive demo of _version tracking, optimistic locking with expectedVersion, and conflict detection.',
     href: '/concurrency',
