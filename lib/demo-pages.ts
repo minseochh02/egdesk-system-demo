@@ -40,7 +40,7 @@ export const DEMO_PAGES: DemoPageLink[] = [
     description: 'Watch or poll Google Drive folder changes, inspect sync status, and list file events.',
     href: '/drive-mcp',
     eyebrow: 'Drive sync',
-    items: ['initDriveSync', 'listDriveWatchedFolders', 'startDrivePollLoop', 'getDriveStatus'],
+    items: ['startDriveAuthLogin', 'getDriveAuthStatus', 'initDriveSync', 'startDrivePollLoop'],
   },
   {
     title: 'EGDesk Config MCP',

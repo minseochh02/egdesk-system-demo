@@ -41,10 +41,43 @@ export function extractDriveFolderId(input: string): string | null {
 
 const TOOLS: PlaygroundToolDef[] = [
   {
+    name: 'drive_auth_status',
+    title: 'Auth status',
+    description:
+      'Check whether Drive can authenticate (service account or Google OAuth). Poll after Connect Google until connected.',
+    category: 'setup',
+    helperName: 'getDriveAuthStatus',
+    fields: [],
+  },
+  {
+    name: 'drive_auth_login',
+    title: 'Start Google login',
+    description:
+      'Returns authUrl immediately. Open it to show Google account picker + consent; EGDesk receives the callback. Prefer the Connect Google button above.',
+    category: 'setup',
+    helperName: 'startDriveAuthLogin',
+    fields: [
+      {
+        name: 'openWindow',
+        label: 'Also open EGDesk OAuth window',
+        type: 'boolean',
+        defaultValue: false,
+        hint: 'Leave off for website flow — this page opens authUrl in a popup.',
+      },
+      {
+        name: 'forceConsent',
+        label: 'Force consent',
+        type: 'boolean',
+        defaultValue: true,
+        hint: 'Ask Google for consent again (needed for Drive scope / refresh token).',
+      },
+    ],
+  },
+  {
     name: 'drive_init',
     title: 'Init sync',
     description:
-      'Save folders to watch (local drive.db) and set the change cursor. After this, use the Live feed → Start listening.',
+      'Save folders to watch (local drive.db). Re-running updates the folder list; use Reset only to rebuild the change cursor. Then Live feed → Start listening.',
     category: 'setup',
     helperName: 'initDriveSync',
     fields: [
@@ -66,7 +99,7 @@ const TOOLS: PlaygroundToolDef[] = [
         label: 'Reset existing state',
         type: 'boolean',
         defaultValue: false,
-        hint: 'Reinitialize even if sync state already exists.',
+        hint: 'Only needed to rebuild the page token / wipe channel. Folder list updates without this.',
       },
     ],
   },
@@ -210,12 +243,27 @@ const CATEGORIES = [
 ];
 
 const RUNNING_HINTS: Record<string, string> = {
+  drive_auth_login: 'Starting Google OAuth…',
+  drive_auth_status: 'Checking Drive credentials…',
   drive_init: 'Saving folders and change cursor…',
   drive_watch: 'Registering Google Drive watch channel…',
   drive_poll: 'Listing and processing Drive changes…',
   drive_start_poll_loop: 'Starting continuous poll loop…',
   drive_list_events: 'Loading file events…',
   drive_list_watched_folders: 'Resolving folder names…',
+};
+
+type DriveAuthInfo = {
+  status?: string;
+  connected?: boolean;
+  mode?: string;
+  message?: string;
+  serviceAccount?: { configured?: boolean; clientEmail?: string | null; source?: string };
+  oauth?: {
+    hasDriveScope?: boolean;
+    hasAccessToken?: boolean;
+    scopes?: string[];
+  };
 };
 
 type WatchedFolder = {
@@ -384,8 +432,13 @@ export default function DrivePlayground() {
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveBusy, setLiveBusy] = useState(false);
   const [lastTickAt, setLastTickAt] = useState<string | null>(null);
+  const [authInfo, setAuthInfo] = useState<DriveAuthInfo | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authWaiting, setAuthWaiting] = useState(false);
   const knownEventKeys = useRef<Set<string>>(new Set());
   const listeningRef = useRef(false);
+  const authPollRef = useRef<number | null>(null);
 
   const callDriveTool = useCallback(async (tool: string, args: Record<string, any> = {}) => {
     const res = await apiFetch('/api/drive', {
@@ -498,6 +551,80 @@ export default function DrivePlayground() {
     }
   }, [callDriveTool]);
 
+  const refreshAuthStatus = useCallback(async () => {
+    const status = await callDriveTool('drive_auth_status', {});
+    setAuthInfo(status);
+    return status as DriveAuthInfo;
+  }, [callDriveTool]);
+
+  const stopAuthPoll = useCallback(() => {
+    if (authPollRef.current != null) {
+      window.clearInterval(authPollRef.current);
+      authPollRef.current = null;
+    }
+    setAuthWaiting(false);
+  }, []);
+
+  const startAuthPoll = useCallback(() => {
+    stopAuthPoll();
+    setAuthWaiting(true);
+    const startedAt = Date.now();
+    authPollRef.current = window.setInterval(() => {
+      void (async () => {
+        try {
+          const status = await refreshAuthStatus();
+          if (status?.connected) {
+            stopAuthPoll();
+            setAuthError(null);
+          } else if (Date.now() - startedAt > 3 * 60 * 1000) {
+            stopAuthPoll();
+            setAuthError('Timed out waiting for Google consent. Try Connect Google again.');
+          }
+        } catch (err: any) {
+          // keep polling briefly; EGDesk may still be handling callback
+          if (Date.now() - startedAt > 3 * 60 * 1000) {
+            stopAuthPoll();
+            setAuthError(err?.message || String(err));
+          }
+        }
+      })();
+    }, 2000);
+  }, [refreshAuthStatus, stopAuthPoll]);
+
+  const connectGoogle = useCallback(async () => {
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const started = await callDriveTool('drive_auth_login', {
+        openWindow: false,
+        forceConsent: true,
+      });
+      if (started?.status === 'already_connected') {
+        setAuthInfo(started.auth || (await refreshAuthStatus()));
+        return;
+      }
+      if (started?.status === 'error' || !started?.authUrl) {
+        throw new Error(started?.error || started?.message || 'Failed to start Google login');
+      }
+      const popup = window.open(
+        started.authUrl,
+        'egdesk-drive-google-oauth',
+        'width=520,height=720,menubar=no,toolbar=no'
+      );
+      if (!popup) {
+        // Popup blocked — fall back to same tab
+        window.location.href = started.authUrl;
+        return;
+      }
+      startAuthPoll();
+    } catch (err: any) {
+      setAuthError(err?.message || String(err));
+      stopAuthPoll();
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [callDriveTool, refreshAuthStatus, startAuthPoll, stopAuthPoll]);
+
   // While listening: refresh UI from drive.db every 4s (backend poll loop does Drive API)
   useEffect(() => {
     if (!listening) return;
@@ -508,11 +635,13 @@ export default function DrivePlayground() {
     return () => window.clearInterval(id);
   }, [listening, refreshLiveFeed]);
 
-  // On mount: restore status + folders + events
+  // On mount: restore auth + status + folders + events
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        const auth = await callDriveTool('drive_auth_status', {});
+        if (!cancelled) setAuthInfo(auth);
         const status = await callDriveTool('drive_status', {});
         if (cancelled) return;
         if (Array.isArray(status?.sync?.watchedFolders)) {
@@ -539,6 +668,10 @@ export default function DrivePlayground() {
     })();
     return () => {
       cancelled = true;
+      if (authPollRef.current != null) {
+        window.clearInterval(authPollRef.current);
+        authPollRef.current = null;
+      }
     };
   }, [applyWatchedFolders, callDriveTool]);
 
@@ -589,14 +722,35 @@ export default function DrivePlayground() {
       listeningRef.current = false;
       setPollLoopLabel('off');
     }
-    if (tool === 'drive_init' && parsed?.status === 'initialized') {
-      // After init, nudge user toward live listening (don't auto-start — OAuth may need attention)
+    if (
+      tool === 'drive_init' &&
+      (parsed?.status === 'initialized' ||
+        parsed?.status === 'folders_updated' ||
+        parsed?.status === 'already_initialized')
+    ) {
       setPollLoopLabel((prev) => prev || 'ready — click Start listening');
+    }
+    if (tool === 'drive_auth_status' && parsed?.status) {
+      setAuthInfo(parsed);
+    }
+    if (tool === 'drive_auth_login') {
+      if (parsed?.auth) setAuthInfo(parsed.auth);
+      if (parsed?.status === 'pending' && parsed?.authUrl) {
+        window.open(
+          parsed.authUrl,
+          'egdesk-drive-google-oauth',
+          'width=520,height=720,menubar=no,toolbar=no'
+        );
+        startAuthPoll();
+      }
+      if (parsed?.status === 'already_connected' && parsed?.auth) {
+        setAuthInfo(parsed.auth);
+      }
     }
     if (Array.isArray(parsed) && parsed[0]?.file_id) {
       ingestEvents(parsed, true);
     }
-  }, [applyWatchedFolders, ingestEvents]);
+  }, [applyWatchedFolders, ingestEvents, startAuthPoll]);
 
   const validateBeforeRun = useCallback(
     (tool: PlaygroundToolDef) => {
@@ -636,6 +790,63 @@ export default function DrivePlayground() {
       kvTermStyle,
       kvDescStyle,
     } = playgroundStyles;
+
+    if (data?.authUrl || data?.oauth || data?.serviceAccount || data?.connected != null) {
+      return (
+        <dl style={kvGridStyle}>
+          <dt style={kvTermStyle}>Status</dt>
+          <dd style={kvDescStyle}>{data.status || (data.connected ? 'connected' : '—')}</dd>
+          {data.mode && (
+            <>
+              <dt style={kvTermStyle}>Mode</dt>
+              <dd style={kvDescStyle}>{data.mode}</dd>
+            </>
+          )}
+          {data.connected != null && (
+            <>
+              <dt style={kvTermStyle}>Connected</dt>
+              <dd style={kvDescStyle}>{data.connected ? 'yes' : 'no'}</dd>
+            </>
+          )}
+          {data.authUrl && (
+            <>
+              <dt style={kvTermStyle}>Auth URL</dt>
+              <dd style={kvDescStyle}>
+                <a href={data.authUrl} target="_blank" rel="noreferrer" style={{ color: '#0f766e' }}>
+                  Open Google consent ↗
+                </a>
+              </dd>
+            </>
+          )}
+          {data.redirectUri && (
+            <>
+              <dt style={kvTermStyle}>Callback</dt>
+              <dd style={kvDescStyle}>
+                <code style={inlineCodeStyle}>{data.redirectUri}</code>
+              </dd>
+            </>
+          )}
+          {data.serviceAccount?.clientEmail && (
+            <>
+              <dt style={kvTermStyle}>Service account</dt>
+              <dd style={kvDescStyle}>{data.serviceAccount.clientEmail}</dd>
+            </>
+          )}
+          {data.message && (
+            <>
+              <dt style={kvTermStyle}>Message</dt>
+              <dd style={kvDescStyle}>{data.message}</dd>
+            </>
+          )}
+          {data.nextStep && (
+            <>
+              <dt style={kvTermStyle}>Next</dt>
+              <dd style={kvDescStyle}>{data.nextStep}</dd>
+            </>
+          )}
+        </dl>
+      );
+    }
 
     if (data?.sync || data?.channel || data?.events || Array.isArray(data?.folders)) {
       const folders: WatchedFolder[] = Array.isArray(data?.folders)
@@ -877,9 +1088,88 @@ export default function DrivePlayground() {
   }, []);
 
   const canListen = folderIds.length > 0 || watchedFolders.length > 0;
+  const folderAccessError = watchedFolders.find((f) => f.error)?.error || null;
+  const authConnected = Boolean(authInfo?.connected);
+  const authLabel = authConnected
+    ? authInfo?.mode?.startsWith('service_account')
+      ? `SA · ${authInfo?.serviceAccount?.clientEmail || 'service account'}`
+      : 'Google OAuth connected'
+    : authWaiting
+      ? 'Waiting for Google consent…'
+      : 'Not connected';
 
   const sessionBar = (
     <div style={{ display: 'grid', gap: 12 }}>
+      <div
+        style={{
+          ...playgroundStyles.sessionBarStyle,
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          gap: 12,
+          borderColor: authConnected ? '#bbf7d0' : '#fde68a',
+          background: authConnected ? '#f0fdf4' : '#fffbeb',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div>
+            <div style={playgroundStyles.miniLabelStyle}>Google auth (MCP)</div>
+            <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: authConnected ? '#16a34a' : authWaiting ? '#f59e0b' : '#9ca3af',
+                  display: 'inline-block',
+                }}
+              />
+              {authLabel}
+            </p>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0', lineHeight: 1.45 }}>
+              {authConnected
+                ? authInfo?.message || 'Ready for Init sync / Start listening.'
+                : 'Connect Google here (account picker + consent). EGDesk stores the token; this page polls until connected.'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => void connectGoogle()}
+              disabled={authBusy || authWaiting}
+              style={{
+                ...playgroundStyles.secondaryBtnStyle,
+                background: '#0f766e',
+                color: '#fff',
+                borderColor: '#0f766e',
+                opacity: authBusy || authWaiting ? 0.7 : 1,
+              }}
+            >
+              {authBusy ? 'Starting…' : authWaiting ? 'Waiting…' : authConnected ? 'Re-connect Google' : 'Connect Google'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void refreshAuthStatus().catch((err) => setAuthError(err?.message || String(err)))}
+              disabled={authBusy}
+              style={playgroundStyles.secondaryBtnStyle}
+            >
+              Refresh status
+            </button>
+            {authWaiting && (
+              <button
+                type="button"
+                onClick={stopAuthPoll}
+                style={playgroundStyles.secondaryBtnStyle}
+              >
+                Cancel wait
+              </button>
+            )}
+          </div>
+        </div>
+        {authError && (
+          <p style={{ fontSize: 13, color: '#dc2626', margin: 0 }}>{authError}</p>
+        )}
+      </div>
+
       <div
         style={{
           ...playgroundStyles.sessionBarStyle,
@@ -953,6 +1243,12 @@ export default function DrivePlayground() {
         {liveError && (
           <p style={{ fontSize: 13, color: '#dc2626', margin: 0 }}>{liveError}</p>
         )}
+        {folderAccessError && (
+          <p style={{ fontSize: 13, color: '#b45309', margin: 0, lineHeight: 1.45 }}>
+            Folder not visible to the signed-in Google account: {folderAccessError}
+            {' '}Use Connect Google above (or share the folder with the service account), then Init sync again.
+          </p>
+        )}
 
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: '#6b7280' }}>
           <span>Last refresh: {lastTickAt || '—'}</span>
@@ -972,18 +1268,24 @@ export default function DrivePlayground() {
                     id,
                     name: null as string | null,
                     url: `https://drive.google.com/drive/folders/${id}`,
+                    error: null as string | null,
                   }))
               ).map((folder) => (
                 <div
                   key={folder.id}
                   style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}
                 >
-                  <strong style={{ color: '#111827' }}>{folder.name || 'Folder'}</strong>
+                  <strong style={{ color: folder.error ? '#b45309' : '#111827' }}>
+                    {folder.name || (folder.error ? 'Inaccessible folder' : 'Folder')}
+                  </strong>
                   <code style={{ ...playgroundStyles.inlineCodeStyle, fontSize: 11 }}>{folder.id}</code>
                   {folder.url && (
                     <a href={folder.url} target="_blank" rel="noreferrer" style={{ color: '#0f766e' }}>
                       Open in Drive ↗
                     </a>
+                  )}
+                  {folder.error && (
+                    <span style={{ color: '#b45309', fontSize: 12 }}>{folder.error}</span>
                   )}
                 </div>
               ))}
@@ -1012,7 +1314,9 @@ export default function DrivePlayground() {
         </div>
         {liveEvents.length === 0 ? (
           <p style={{ margin: 0, fontSize: 13, color: '#9ca3af', lineHeight: 1.5 }}>
-            No events yet. After Start listening, upload any file into the watched Drive folder and watch it show up here.
+            {folderAccessError
+              ? 'No events — the watched folder is not visible to EGDesk’s Google credentials, so uploads cannot be detected.'
+              : 'No events yet. After Start listening, upload any file into the watched Drive folder and watch it show up here.'}
           </p>
         ) : (
           <div style={playgroundStyles.tableWrapStyle}>
@@ -1064,7 +1368,7 @@ export default function DrivePlayground() {
       currentHref="/drive-mcp"
       eyebrow="EGDesk Drive MCP"
       title="Drive Playground"
-      subtitle="Init a folder, Start listening, then upload a file in Google Drive — the live feed below updates as events arrive."
+      subtitle="Connect Google (MCP auth) → Init a folder → Start listening → upload a file. Consent opens in a popup; this page waits until EGDesk has the token."
       apiPath="/api/drive"
       tools={TOOLS}
       categories={CATEGORIES}
