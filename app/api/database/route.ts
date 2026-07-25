@@ -80,9 +80,13 @@ async function runHelper(helper: string, args: HelperArgs) {
       const rowId = inserted?.insertedIds?.[0] ?? inserted?.lastInsertRowid ?? 1;
       // 3. Upload the file blob attached to that row
       const upload = await callUserDataTool('user_data_upload_file', {
-        tableName: 'images', rowId, columnName: 'file',
-        filename: args.filename, data: args.data,
+        tableName: 'images',
+        rowId,
+        columnName: 'file',
+        filename: args.filename,
+        data: args.data,
         mimeType: args.mimeType,
+        ...(args.yoloCrop ? { yoloCrop: true } : {}),
       });
       return { rowId, upload };
     }

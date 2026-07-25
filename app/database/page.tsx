@@ -196,12 +196,20 @@ const TOOLS: ToolDef[] = [
   {
     name: 'uploadImage',
     title: 'Upload file',
-    description: 'Upload a file (image, PDF, video, audio, etc.) to the files table.',
+    description:
+      'Upload a file to the images table. Set YOLO crop for product photos (background removed); leave off for receipts/documents.',
     category: 'files',
     fields: [
       { name: 'data', label: 'File data (base64)', type: 'textarea', required: true, placeholder: 'SGVsbG8gV29ybGQ=', hint: 'Use the file picker below to select a file.' },
       { name: 'filename', label: 'Filename', type: 'string', required: true, placeholder: 'document.pdf' },
       { name: 'mimeType', label: 'MIME type', type: 'string', placeholder: 'application/pdf' },
+      {
+        name: 'yoloCrop',
+        label: 'YOLO crop (images only)',
+        type: 'boolean',
+        defaultValue: false,
+        hint: 'When yes, EGDesk runs YOLO and stores the best object crop. Use for product/equipment photos; keep off for full-page receipts and documents.',
+      },
     ],
   },
   {
@@ -706,7 +714,7 @@ export default function DatabasePlayground() {
                   {field.name === 'data' && selectedTool.name === 'uploadImage' && (
                     <input
                       type="file"
-                      accept="*/*"
+                      accept={fieldValues.yoloCrop === 'true' ? 'image/*' : '*/*'}
                       style={{ marginTop: 6, fontSize: 12 }}
                       onChange={e => {
                         const file = e.target.files?.[0];
@@ -994,6 +1002,76 @@ function DisplayResultView({ data, helper }: { data: any; helper: string }) {
 
   if (typeof data !== 'object') {
     return <p style={{ color: '#374151', fontSize: 14, margin: 0 }}>{String(data)}</p>;
+  }
+
+  // uploadImage — show row + MCP upload metadata including YOLO crop
+  if (helper === 'uploadImage' && data.upload && typeof data.upload === 'object') {
+    const upload = data.upload as Record<string, any>;
+    return (
+      <div style={{ display: 'grid', gap: 12 }}>
+        <dl style={kvGridStyle}>
+          {data.rowId != null && (
+            <>
+              <dt style={kvTermStyle}>Row ID</dt>
+              <dd style={kvDescStyle}>{String(data.rowId)}</dd>
+            </>
+          )}
+          {upload.fileId && (
+            <>
+              <dt style={kvTermStyle}>File ID</dt>
+              <dd style={kvDescStyle}><code style={inlineCodeStyle}>{upload.fileId}</code></dd>
+            </>
+          )}
+          {upload.storageType && (
+            <>
+              <dt style={kvTermStyle}>Storage</dt>
+              <dd style={kvDescStyle}>{upload.storageType}</dd>
+            </>
+          )}
+          {upload.storedSize != null && (
+            <>
+              <dt style={kvTermStyle}>Stored size</dt>
+              <dd style={kvDescStyle}>{upload.storedSize} bytes</dd>
+            </>
+          )}
+          {upload.yoloCropRequested != null && (
+            <>
+              <dt style={kvTermStyle}>YOLO requested</dt>
+              <dd style={kvDescStyle}>{upload.yoloCropRequested ? 'yes' : 'no'}</dd>
+            </>
+          )}
+          {upload.yoloCropApplied != null && (
+            <>
+              <dt style={kvTermStyle}>YOLO applied</dt>
+              <dd style={kvDescStyle}>{upload.yoloCropApplied ? 'yes — cropped object stored' : 'no'}</dd>
+            </>
+          )}
+          {upload.confidence != null && (
+            <>
+              <dt style={kvTermStyle}>Detection confidence</dt>
+              <dd style={kvDescStyle}>{Number(upload.confidence).toFixed(3)}</dd>
+            </>
+          )}
+          {upload.bbox && (
+            <>
+              <dt style={kvTermStyle}>BBox</dt>
+              <dd style={kvDescStyle}>
+                x1={upload.bbox.x1?.toFixed?.(0) ?? upload.bbox.x1},{' '}
+                y1={upload.bbox.y1?.toFixed?.(0) ?? upload.bbox.y1},{' '}
+                x2={upload.bbox.x2?.toFixed?.(0) ?? upload.bbox.x2},{' '}
+                y2={upload.bbox.y2?.toFixed?.(0) ?? upload.bbox.y2}
+              </dd>
+            </>
+          )}
+          {upload.error && (
+            <>
+              <dt style={kvTermStyle}>YOLO note</dt>
+              <dd style={kvDescStyle}>{upload.error}</dd>
+            </>
+          )}
+        </dl>
+      </div>
+    );
   }
 
   // Inline file display for fetchFile / fetchImage results
