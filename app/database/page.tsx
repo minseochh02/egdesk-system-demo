@@ -210,6 +210,28 @@ const TOOLS: ToolDef[] = [
         defaultValue: false,
         hint: 'When yes, EGDesk runs YOLO and stores the best object crop. Use for product/equipment photos; keep off for full-page receipts and documents.',
       },
+      {
+        name: 'yoloModel',
+        label: 'YOLO model',
+        type: 'select',
+        options: ['yolo26n', 'yolo26x'],
+        defaultValue: 'yolo26n',
+        hint: 'Only used when YOLO crop is yes. yolo26x is slower but may detect harder scenes.',
+      },
+      {
+        name: 'yoloConfThreshold',
+        label: 'YOLO confidence threshold',
+        type: 'number',
+        defaultValue: 0.55,
+        hint: 'Only used when YOLO crop is yes. Lower (e.g. 0.25) crops on weaker detections.',
+      },
+      {
+        name: 'yoloCropPad',
+        label: 'YOLO crop padding (px)',
+        type: 'number',
+        defaultValue: 12,
+        hint: 'Only used when YOLO crop is yes. Extra pixels around the detected box.',
+      },
     ],
   },
   {
@@ -1044,6 +1066,24 @@ function DisplayResultView({ data, helper }: { data: any; helper: string }) {
             <>
               <dt style={kvTermStyle}>YOLO applied</dt>
               <dd style={kvDescStyle}>{upload.yoloCropApplied ? 'yes — cropped object stored' : 'no'}</dd>
+            </>
+          )}
+          {upload.yoloModel && (
+            <>
+              <dt style={kvTermStyle}>YOLO model</dt>
+              <dd style={kvDescStyle}>{upload.yoloModel}</dd>
+            </>
+          )}
+          {upload.yoloConfThreshold != null && (
+            <>
+              <dt style={kvTermStyle}>YOLO conf threshold</dt>
+              <dd style={kvDescStyle}>{Number(upload.yoloConfThreshold).toFixed(2)}</dd>
+            </>
+          )}
+          {upload.yoloCropPad != null && (
+            <>
+              <dt style={kvTermStyle}>YOLO crop pad</dt>
+              <dd style={kvDescStyle}>{upload.yoloCropPad}px</dd>
             </>
           )}
           {upload.confidence != null && (
