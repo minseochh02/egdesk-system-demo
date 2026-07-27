@@ -95,20 +95,44 @@ async function runHelper(helper: string, args: HelperArgs) {
     }
 
     case 'listImages':
-      return queryTable('images', { limit: 100, orderBy: 'id', orderDirection: 'desc' });
+      return queryTable('images', { limit: 100, orderBy: 'id', orderDirection: 'DESC' });
 
     case 'deleteImage': {
-      // Delete the file blob first, then remove the row
-      await callUserDataTool('user_data_delete_file', { tableName: 'images', rowId: args.rowId, columnName: 'file' });
+      // Delete main file + any YOLO crop siblings, then remove the row
+      const listed = await callUserDataTool('user_data_list_files', {
+        tableName: 'images',
+        rowId: args.rowId,
+      }).catch(() => null);
+      const files: Array<{ columnName?: string; column_name?: string }> = Array.isArray(listed?.files)
+        ? listed.files
+        : Array.isArray(listed)
+          ? listed
+          : [];
+      const columns = new Set<string>(['file']);
+      for (const f of files) {
+        const col = f.columnName || f.column_name;
+        if (col && /^file__crop_\d+$/.test(col)) columns.add(col);
+      }
+      for (const columnName of columns) {
+        await callUserDataTool('user_data_delete_file', {
+          tableName: 'images',
+          rowId: args.rowId,
+          columnName,
+        }).catch(() => undefined);
+      }
       return deleteRows('images', { ids: [args.rowId] });
     }
 
     case 'fetchImage':
     case 'fetchFile': {
       const file = await callUserDataTool('user_data_download_file', {
-        tableName: 'images',
-        rowId: args.rowId,
-        columnName: 'file',
+        ...(args.fileId
+          ? { fileId: args.fileId }
+          : {
+              tableName: 'images',
+              rowId: args.rowId,
+              columnName: args.columnName || 'file',
+            }),
       });
       return file;
     }

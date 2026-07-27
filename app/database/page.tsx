@@ -197,7 +197,7 @@ const TOOLS: ToolDef[] = [
     name: 'uploadImage',
     title: 'Upload file',
     description:
-      'Upload a file to the images table. Set YOLO crop for product photos (background removed); leave off for receipts/documents.',
+      'Upload a file to the images table. Set YOLO crop to keep the full photo and also save a crop for every detected object.',
     category: 'files',
     fields: [
       { name: 'data', label: 'File data (base64)', type: 'textarea', required: true, placeholder: 'SGVsbG8gV29ybGQ=', hint: 'Use the file picker below to select a file.' },
@@ -208,7 +208,7 @@ const TOOLS: ToolDef[] = [
         label: 'YOLO crop (images only)',
         type: 'boolean',
         defaultValue: false,
-        hint: 'When yes, EGDesk runs YOLO and stores the best object crop. Use for product/equipment photos; keep off for full-page receipts and documents.',
+        hint: 'When yes, stores the full image plus sibling crop files (file__crop_0..N) for each detection. Keep off for receipts/documents.',
       },
       {
         name: 'yoloModel',
@@ -1017,6 +1017,216 @@ export default function DatabasePlayground() {
 
 // ── Display components ──────────────────────────────────────────────────────
 
+type FetchedPreview = { fileId: string; dataUrl: string; filename?: string };
+
+function UploadImageResultView({ data }: { data: any }) {
+  const upload = data.upload as Record<string, any>;
+  const crops: Array<Record<string, any>> = Array.isArray(upload.crops) ? upload.crops : [];
+  const [fullPreview, setFullPreview] = useState<FetchedPreview | null>(null);
+  const [cropPreviews, setCropPreviews] = useState<FetchedPreview[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadByFileId = async (fileId: string): Promise<FetchedPreview | null> => {
+      const res = await apiFetch('/api/database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ helper: 'fetchFile', arguments: { fileId } }),
+      });
+      const raw = await res.json();
+      if (raw?.success === false) throw new Error(raw.error || 'Failed to fetch file');
+      const file = raw?.result ?? raw;
+      if (!file?.data || !file?.mimeType) return null;
+      return {
+        fileId,
+        dataUrl: `data:${file.mimeType};base64,${file.data}`,
+        filename: file.filename,
+      };
+    };
+
+    (async () => {
+      try {
+        setPreviewError(null);
+        if (upload.fileId) {
+          const full = await loadByFileId(upload.fileId);
+          if (!cancelled) setFullPreview(full);
+        }
+        const loaded: FetchedPreview[] = [];
+        for (const crop of crops) {
+          if (!crop.fileId) continue;
+          const preview = await loadByFileId(crop.fileId);
+          if (preview) loaded.push(preview);
+        }
+        if (!cancelled) setCropPreviews(loaded);
+      } catch (err: any) {
+        if (!cancelled) setPreviewError(err?.message || String(err));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [upload.fileId, JSON.stringify(crops.map((c) => c.fileId))]);
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <dl style={kvGridStyle}>
+        {data.rowId != null && (
+          <>
+            <dt style={kvTermStyle}>Row ID</dt>
+            <dd style={kvDescStyle}>{String(data.rowId)}</dd>
+          </>
+        )}
+        {upload.fileId && (
+          <>
+            <dt style={kvTermStyle}>File ID</dt>
+            <dd style={kvDescStyle}><code style={inlineCodeStyle}>{upload.fileId}</code></dd>
+          </>
+        )}
+        {upload.storageType && (
+          <>
+            <dt style={kvTermStyle}>Storage</dt>
+            <dd style={kvDescStyle}>{upload.storageType}</dd>
+          </>
+        )}
+        {upload.storedSize != null && (
+          <>
+            <dt style={kvTermStyle}>Stored size</dt>
+            <dd style={kvDescStyle}>{upload.storedSize} bytes</dd>
+          </>
+        )}
+        {upload.yoloCropRequested != null && (
+          <>
+            <dt style={kvTermStyle}>YOLO requested</dt>
+            <dd style={kvDescStyle}>{upload.yoloCropRequested ? 'yes' : 'no'}</dd>
+          </>
+        )}
+        {upload.yoloCropApplied != null && (
+          <>
+            <dt style={kvTermStyle}>YOLO applied</dt>
+            <dd style={kvDescStyle}>
+              {upload.yoloCropApplied
+                ? `yes — ${crops.length} crop${crops.length === 1 ? '' : 's'} stored`
+                : 'no'}
+            </dd>
+          </>
+        )}
+        {upload.yoloModel && (
+          <>
+            <dt style={kvTermStyle}>YOLO model</dt>
+            <dd style={kvDescStyle}>{upload.yoloModel}</dd>
+          </>
+        )}
+        {upload.yoloConfThreshold != null && (
+          <>
+            <dt style={kvTermStyle}>YOLO conf threshold</dt>
+            <dd style={kvDescStyle}>{Number(upload.yoloConfThreshold).toFixed(2)}</dd>
+          </>
+        )}
+        {upload.yoloCropPad != null && (
+          <>
+            <dt style={kvTermStyle}>YOLO crop pad</dt>
+            <dd style={kvDescStyle}>{upload.yoloCropPad}px</dd>
+          </>
+        )}
+        {upload.error && (
+          <>
+            <dt style={kvTermStyle}>YOLO note</dt>
+            <dd style={kvDescStyle}>{upload.error}</dd>
+          </>
+        )}
+      </dl>
+
+      {previewError && (
+        <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>Preview error: {previewError}</p>
+      )}
+
+      {fullPreview && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>Full image</div>
+          <img
+            src={fullPreview.dataUrl}
+            alt={fullPreview.filename || 'Full upload'}
+            style={{
+              maxWidth: '100%',
+              maxHeight: 420,
+              borderRadius: 8,
+              border: '1px solid #e5e7eb',
+              objectFit: 'contain',
+              background: '#f9fafb',
+            }}
+          />
+        </div>
+      )}
+
+      {crops.length > 0 && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
+            Detected crops ({crops.length})
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 12,
+            }}
+          >
+            {crops.map((crop, index) => {
+              const preview = cropPreviews.find((p) => p.fileId === crop.fileId);
+              return (
+                <div
+                  key={crop.fileId || `${crop.columnName}-${index}`}
+                  style={{
+                    width: 140,
+                    display: 'grid',
+                    gap: 6,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 140,
+                      height: 140,
+                      borderRadius: 8,
+                      border: '1px solid #e5e7eb',
+                      background: '#f9fafb',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {preview ? (
+                      <img
+                        src={preview.dataUrl}
+                        alt={crop.filename || `Crop ${index}`}
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>Loading…</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#374151', lineHeight: 1.35 }}>
+                    <div style={{ fontWeight: 600 }}>#{index}</div>
+                    {crop.confidence != null && (
+                      <div>conf {Number(crop.confidence).toFixed(3)}</div>
+                    )}
+                    {crop.classId != null && <div>class {crop.classId}</div>}
+                    {crop.columnName && (
+                      <div style={{ color: '#6b7280', wordBreak: 'break-all' }}>{crop.columnName}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DisplayResultView({ data, helper }: { data: any; helper: string }) {
   if (data == null) {
     return <p style={{ color: '#6b7280', fontSize: 14, margin: 0 }}>No data returned.</p>;
@@ -1026,92 +1236,9 @@ function DisplayResultView({ data, helper }: { data: any; helper: string }) {
     return <p style={{ color: '#374151', fontSize: 14, margin: 0 }}>{String(data)}</p>;
   }
 
-  // uploadImage — show row + MCP upload metadata including YOLO crop
+  // uploadImage — full image + YOLO crop gallery
   if (helper === 'uploadImage' && data.upload && typeof data.upload === 'object') {
-    const upload = data.upload as Record<string, any>;
-    return (
-      <div style={{ display: 'grid', gap: 12 }}>
-        <dl style={kvGridStyle}>
-          {data.rowId != null && (
-            <>
-              <dt style={kvTermStyle}>Row ID</dt>
-              <dd style={kvDescStyle}>{String(data.rowId)}</dd>
-            </>
-          )}
-          {upload.fileId && (
-            <>
-              <dt style={kvTermStyle}>File ID</dt>
-              <dd style={kvDescStyle}><code style={inlineCodeStyle}>{upload.fileId}</code></dd>
-            </>
-          )}
-          {upload.storageType && (
-            <>
-              <dt style={kvTermStyle}>Storage</dt>
-              <dd style={kvDescStyle}>{upload.storageType}</dd>
-            </>
-          )}
-          {upload.storedSize != null && (
-            <>
-              <dt style={kvTermStyle}>Stored size</dt>
-              <dd style={kvDescStyle}>{upload.storedSize} bytes</dd>
-            </>
-          )}
-          {upload.yoloCropRequested != null && (
-            <>
-              <dt style={kvTermStyle}>YOLO requested</dt>
-              <dd style={kvDescStyle}>{upload.yoloCropRequested ? 'yes' : 'no'}</dd>
-            </>
-          )}
-          {upload.yoloCropApplied != null && (
-            <>
-              <dt style={kvTermStyle}>YOLO applied</dt>
-              <dd style={kvDescStyle}>{upload.yoloCropApplied ? 'yes — cropped object stored' : 'no'}</dd>
-            </>
-          )}
-          {upload.yoloModel && (
-            <>
-              <dt style={kvTermStyle}>YOLO model</dt>
-              <dd style={kvDescStyle}>{upload.yoloModel}</dd>
-            </>
-          )}
-          {upload.yoloConfThreshold != null && (
-            <>
-              <dt style={kvTermStyle}>YOLO conf threshold</dt>
-              <dd style={kvDescStyle}>{Number(upload.yoloConfThreshold).toFixed(2)}</dd>
-            </>
-          )}
-          {upload.yoloCropPad != null && (
-            <>
-              <dt style={kvTermStyle}>YOLO crop pad</dt>
-              <dd style={kvDescStyle}>{upload.yoloCropPad}px</dd>
-            </>
-          )}
-          {upload.confidence != null && (
-            <>
-              <dt style={kvTermStyle}>Detection confidence</dt>
-              <dd style={kvDescStyle}>{Number(upload.confidence).toFixed(3)}</dd>
-            </>
-          )}
-          {upload.bbox && (
-            <>
-              <dt style={kvTermStyle}>BBox</dt>
-              <dd style={kvDescStyle}>
-                x1={upload.bbox.x1?.toFixed?.(0) ?? upload.bbox.x1},{' '}
-                y1={upload.bbox.y1?.toFixed?.(0) ?? upload.bbox.y1},{' '}
-                x2={upload.bbox.x2?.toFixed?.(0) ?? upload.bbox.x2},{' '}
-                y2={upload.bbox.y2?.toFixed?.(0) ?? upload.bbox.y2}
-              </dd>
-            </>
-          )}
-          {upload.error && (
-            <>
-              <dt style={kvTermStyle}>YOLO note</dt>
-              <dd style={kvDescStyle}>{upload.error}</dd>
-            </>
-          )}
-        </dl>
-      </div>
-    );
+    return <UploadImageResultView data={data} />;
   }
 
   // Inline file display for fetchFile / fetchImage results
