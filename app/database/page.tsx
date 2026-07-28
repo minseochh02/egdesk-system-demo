@@ -197,7 +197,7 @@ const TOOLS: ToolDef[] = [
     name: 'uploadImage',
     title: 'Upload file',
     description:
-      'Upload a file to the images table. Set YOLO crop to keep the full photo and also save a crop for every detected object.',
+      'Upload a file to the images table. Optional paper/object classification gates YOLO crops (paper skips crops unless forced).',
     category: 'files',
     fields: [
       { name: 'data', label: 'File data (base64)', type: 'textarea', required: true, placeholder: 'SGVsbG8gV29ybGQ=', hint: 'Use the file picker below to select a file.' },
@@ -208,29 +208,51 @@ const TOOLS: ToolDef[] = [
         label: 'YOLO crop (images only)',
         type: 'boolean',
         defaultValue: false,
-        hint: 'When yes, stores the full image plus sibling crop files (file__crop_0..N) for each detection. Keep off for receipts/documents.',
+        hint: 'When yes, stores the full image plus sibling crops for object detections. Auto-skipped when classified as paper.',
+      },
+      {
+        name: 'classifyContent',
+        label: 'Classify paper vs object',
+        type: 'boolean',
+        defaultValue: true,
+        hint: 'Defaults on with YOLO crop. Heuristic paper/object routing (design §2a binary slice).',
+      },
+      {
+        name: 'contentType',
+        label: 'Content type override',
+        type: 'select',
+        options: ['auto', 'object', 'paper'],
+        defaultValue: 'auto',
+        hint: 'auto = run heuristics. object/paper overrides classification.',
+      },
+      {
+        name: 'forceYoloCrop',
+        label: 'Force YOLO on paper',
+        type: 'boolean',
+        defaultValue: false,
+        hint: 'Run YOLO crops even when content type is paper.',
       },
       {
         name: 'yoloModel',
         label: 'YOLO model',
         type: 'select',
-        options: ['yolo26n', 'yolo26x'],
+        options: ['yolo26n', 'yolo26n-paper', 'yolo26x'],
         defaultValue: 'yolo26n',
-        hint: 'Only used when YOLO crop is yes. yolo26x is slower but may detect harder scenes.',
+        hint: 'Only used when YOLO actually runs. yolo26n-paper adds document/paper class. yolo26x is slower.',
       },
       {
         name: 'yoloConfThreshold',
         label: 'YOLO confidence threshold',
         type: 'number',
         defaultValue: 0.55,
-        hint: 'Only used when YOLO crop is yes. Lower (e.g. 0.25) crops on weaker detections.',
+        hint: 'Only used when YOLO runs. Lower (e.g. 0.25) crops on weaker detections.',
       },
       {
         name: 'yoloCropPad',
         label: 'YOLO crop padding (px)',
         type: 'number',
         defaultValue: 12,
-        hint: 'Only used when YOLO crop is yes. Extra pixels around the detected box.',
+        hint: 'Only used when YOLO runs. Extra pixels around the detected box.',
       },
     ],
   },
@@ -1097,6 +1119,24 @@ function UploadImageResultView({ data }: { data: any }) {
             <dd style={kvDescStyle}>{upload.storedSize} bytes</dd>
           </>
         )}
+        {upload.contentType && (
+          <>
+            <dt style={kvTermStyle}>Content type</dt>
+            <dd style={kvDescStyle}>
+              {upload.contentType}
+              {upload.contentTypeSource ? ` (${upload.contentTypeSource})` : ''}
+              {upload.contentTypeConfidence != null
+                ? ` · ${Number(upload.contentTypeConfidence).toFixed(2)}`
+                : ''}
+            </dd>
+          </>
+        )}
+        {Array.isArray(upload.contentTypeReasons) && upload.contentTypeReasons.length > 0 && (
+          <>
+            <dt style={kvTermStyle}>Classify reasons</dt>
+            <dd style={kvDescStyle}>{upload.contentTypeReasons.join(', ')}</dd>
+          </>
+        )}
         {upload.yoloCropRequested != null && (
           <>
             <dt style={kvTermStyle}>YOLO requested</dt>
@@ -1111,6 +1151,12 @@ function UploadImageResultView({ data }: { data: any }) {
                 ? `yes — ${crops.length} crop${crops.length === 1 ? '' : 's'} stored`
                 : 'no'}
             </dd>
+          </>
+        )}
+        {upload.yoloSkippedReason && (
+          <>
+            <dt style={kvTermStyle}>YOLO skipped</dt>
+            <dd style={kvDescStyle}>{upload.yoloSkippedReason}</dd>
           </>
         )}
         {upload.yoloModel && (
