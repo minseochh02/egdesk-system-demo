@@ -87,11 +87,9 @@ async function runHelper(helper: string, args: HelperArgs) {
         data: args.data,
         mimeType: args.mimeType,
         ...(args.yoloCrop ? { yoloCrop: true } : {}),
-        ...(args.classifyContent !== undefined ? { classifyContent: !!args.classifyContent } : {}),
         ...(args.contentType === 'object' || args.contentType === 'paper'
           ? { contentType: args.contentType }
           : {}),
-        ...(args.forceYoloCrop ? { forceYoloCrop: true } : {}),
         ...(args.yoloModel ? { yoloModel: args.yoloModel } : {}),
         ...(args.yoloConfThreshold !== undefined ? { yoloConfThreshold: Number(args.yoloConfThreshold) } : {}),
         ...(args.yoloCropPad !== undefined ? { yoloCropPad: Number(args.yoloCropPad) } : {}),

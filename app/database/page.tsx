@@ -197,7 +197,7 @@ const TOOLS: ToolDef[] = [
     name: 'uploadImage',
     title: 'Upload file',
     description:
-      'Upload a file to the images table. Optional paper/object classification gates YOLO crops (paper skips crops unless forced).',
+      'Upload a file to the images table. Turn on YOLO to classify paper vs object (yolo26n-paper) and store object crops.',
     category: 'files',
     fields: [
       { name: 'data', label: 'File data (base64)', type: 'textarea', required: true, placeholder: 'SGVsbG8gV29ybGQ=', hint: 'Use the file picker below to select a file.' },
@@ -205,17 +205,18 @@ const TOOLS: ToolDef[] = [
       { name: 'mimeType', label: 'MIME type', type: 'string', placeholder: 'application/pdf' },
       {
         name: 'yoloCrop',
-        label: 'YOLO crop (images only)',
-        type: 'boolean',
-        defaultValue: false,
-        hint: 'When yes, stores the full image plus sibling crops for object detections. Auto-skipped when classified as paper.',
-      },
-      {
-        name: 'classifyContent',
-        label: 'Classify paper vs object',
+        label: 'Run YOLO (classify + crop)',
         type: 'boolean',
         defaultValue: true,
-        hint: 'Defaults on with YOLO crop. Heuristic paper/object routing (design §2a binary slice).',
+        hint: 'Always runs YOLO on images. With yolo26n-paper: tags paper, crops objects only. Full image is always kept.',
+      },
+      {
+        name: 'yoloModel',
+        label: 'YOLO model',
+        type: 'select',
+        options: ['yolo26n-paper', 'yolo26n', 'yolo26x'],
+        defaultValue: 'yolo26n-paper',
+        hint: 'yolo26n-paper = paper/object labeling + object crops. Stock models have no paper class (crops only).',
       },
       {
         name: 'contentType',
@@ -223,36 +224,21 @@ const TOOLS: ToolDef[] = [
         type: 'select',
         options: ['auto', 'object', 'paper'],
         defaultValue: 'auto',
-        hint: 'auto = run heuristics. object/paper overrides classification.',
-      },
-      {
-        name: 'forceYoloCrop',
-        label: 'Force YOLO on paper',
-        type: 'boolean',
-        defaultValue: false,
-        hint: 'Run YOLO crops even when content type is paper.',
-      },
-      {
-        name: 'yoloModel',
-        label: 'YOLO model',
-        type: 'select',
-        options: ['yolo26n', 'yolo26n-paper', 'yolo26x'],
-        defaultValue: 'yolo26n',
-        hint: 'Only used when YOLO actually runs. yolo26n-paper adds document/paper class. yolo26x is slower.',
+        hint: 'Leave auto unless you need to force the label. Does not skip YOLO.',
       },
       {
         name: 'yoloConfThreshold',
         label: 'YOLO confidence threshold',
         type: 'number',
         defaultValue: 0.55,
-        hint: 'Only used when YOLO runs. Lower (e.g. 0.25) crops on weaker detections.',
+        hint: 'Lower (e.g. 0.25) keeps weaker detections.',
       },
       {
         name: 'yoloCropPad',
         label: 'YOLO crop padding (px)',
         type: 'number',
         defaultValue: 12,
-        hint: 'Only used when YOLO runs. Extra pixels around the detected box.',
+        hint: 'Extra pixels around each object box.',
       },
     ],
   },
@@ -1163,6 +1149,16 @@ function UploadImageResultView({ data }: { data: any }) {
           <>
             <dt style={kvTermStyle}>YOLO model</dt>
             <dd style={kvDescStyle}>{upload.yoloModel}</dd>
+          </>
+        )}
+        {upload.paperDetected != null && (
+          <>
+            <dt style={kvTermStyle}>YOLO paper</dt>
+            <dd style={kvDescStyle}>
+              {upload.paperDetected
+                ? `yes${upload.paperConfidence != null ? ` · ${Number(upload.paperConfidence).toFixed(2)}` : ''}`
+                : 'no'}
+            </dd>
           </>
         )}
         {upload.yoloConfThreshold != null && (
