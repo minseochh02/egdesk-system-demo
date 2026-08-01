@@ -173,7 +173,7 @@ const RUNNING_HINTS: Record<string, string> = {
   pageindex_get_pages: 'Extracting page text…',
 };
 
-function statusBadgeStyle(status: string): CSSProperties {
+function statusToneStyle(status: string): CSSProperties {
   if (status === 'completed') {
     return { background: '#ecfdf5', color: '#065f46' };
   }
@@ -244,7 +244,6 @@ export default function PageIndexPlayground() {
     const {
       sessionBarStyle,
       sessionPillsStyle,
-      statusBadgeStyle,
       miniLabelStyle,
       tableWrapStyle,
       tableStyle,
@@ -289,11 +288,8 @@ export default function PageIndexPlayground() {
                 <dt style={kvTermStyle}>Status</dt>
                 <dd style={kvDescStyle}>
                   <span style={{
-                    ...statusBadgeStyle(String(data.status)),
-                    fontSize: 12,
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: 999,
+                    ...playgroundStyles.statusBadgeStyle,
+                    ...statusToneStyle(String(data.status)),
                     display: 'inline-block',
                   }}>
                     {data.status}
@@ -350,11 +346,8 @@ export default function PageIndexPlayground() {
                         <td style={tdStyle}><code style={inlineCodeStyle}>{id || '—'}</code></td>
                         <td style={tdStyle}>
                           <span style={{
-                            ...statusBadgeStyle(status),
-                            fontSize: 11,
-                            fontWeight: 700,
-                            padding: '2px 8px',
-                            borderRadius: 999,
+                            ...playgroundStyles.statusBadgeStyle,
+                            ...statusToneStyle(status),
                             display: 'inline-block',
                           }}>
                             {status}
@@ -462,7 +455,7 @@ export default function PageIndexPlayground() {
         {documents.some(isIncomplete) && (
           <span style={{
             ...playgroundStyles.statusBadgeStyle,
-            ...statusBadgeStyle('indexing'),
+            ...statusToneStyle('indexing'),
           }}>
             {documents.filter(isIncomplete).length} incomplete
           </span>
