@@ -251,9 +251,13 @@ export function McpPlayground({
   renderRunActions,
   onFieldValuesChange,
 }: McpPlaygroundProps) {
-  const [selectedToolName, setSelectedToolName] = useState(() => tools[0]?.name ?? '');
+  const toolSelectKey = (tool: PlaygroundToolDef) => tool.helperName || tool.name;
+
+  const [selectedToolName, setSelectedToolName] = useState(
+    () => (tools[0] ? toolSelectKey(tools[0]) : ''),
+  );
   const selectedTool = useMemo(
-    () => tools.find(t => t.name === selectedToolName) ?? tools[0],
+    () => tools.find(t => toolSelectKey(t) === selectedToolName) ?? tools[0],
     [tools, selectedToolName],
   );
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
@@ -277,8 +281,8 @@ export function McpPlayground({
   }, [currentHref]);
 
   useEffect(() => {
-    if (tools.length > 0 && !tools.some(t => t.name === selectedToolName)) {
-      setSelectedToolName(tools[0].name);
+    if (tools.length > 0 && !tools.some(t => toolSelectKey(t) === selectedToolName)) {
+      setSelectedToolName(toolSelectKey(tools[0]));
     }
   }, [tools, selectedToolName]);
 
@@ -508,11 +512,11 @@ export function McpPlayground({
                   <div style={toolTabGridStyle}>
                     {catTools.map(tool => (
                       <button
-                        key={tool.name}
-                        onClick={() => setSelectedToolName(tool.name)}
+                        key={toolSelectKey(tool)}
+                        onClick={() => setSelectedToolName(toolSelectKey(tool))}
                         style={{
                           ...toolTabStyle,
-                          ...(selectedTool.name === tool.name ? activeTabStyle : {}),
+                          ...(toolSelectKey(selectedTool) === toolSelectKey(tool) ? activeTabStyle : {}),
                         }}
                       >
                         {tool.title}

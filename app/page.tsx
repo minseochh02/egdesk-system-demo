@@ -20,7 +20,7 @@ export default function Home() {
         <p style={introStyle}>
           This workspace shows the generated EGDesk integration surface: database helpers, UserData cron jobs, PageIndex,
           Gemini key config, Korean law, SEO, local agent AI, FinanceHub, internal knowledge, browser recording, SSL,
-          inventory scanner setup, BI product catalog, blog schedule/publish, and Kakao MCP helpers.
+          inventory scanner setup, BI product catalog, blog schedule/publish (including HTML + images in one call), and Kakao MCP helpers.
         </p>
       </section>
 

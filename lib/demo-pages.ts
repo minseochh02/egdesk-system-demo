@@ -135,7 +135,7 @@ export const DEMO_PAGES: DemoPageLink[] = [
   },
   {
     title: 'Blog MCP',
-    description: 'Schedule auto-gen BI product posts, or generate a draft then publish to WordPress / Naver separately.',
+    description: 'Schedule auto-gen BI posts, generate then publish by draftId, or send HTML + images in one blog_publish call.',
     href: '/blog-mcp',
     eyebrow: 'Blog automation',
     items: ['blog_schedule_create', 'blog_generate_content', 'blog_publish'],

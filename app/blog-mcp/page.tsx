@@ -7,6 +7,26 @@ import {
   type PlaygroundToolDef,
 } from '@/components/mcp-playground';
 
+const SAMPLE_HTML = `<h2>Why this product stands out</h2>
+<p>Opening paragraph with the core benefit for your audience.</p>
+[IMAGE:Product hero shot on a clean desk:header]
+<p>Details about how it works in daily use, with a concrete example.</p>
+[IMAGE:Close-up of key feature in use:content]
+<p>Closing call to action inviting the reader to try it.</p>`;
+
+const SAMPLE_IMAGES_JSON = `[
+  {
+    "description": "Product hero shot on a clean desk",
+    "placement": "header",
+    "filePath": "/absolute/path/to/hero.png"
+  },
+  {
+    "description": "Close-up of key feature in use",
+    "placement": "content",
+    "filePath": "/absolute/path/to/detail.png"
+  }
+]`;
+
 const TOOLS: PlaygroundToolDef[] = [
   {
     name: 'blog_list_connections',
@@ -141,7 +161,7 @@ const TOOLS: PlaygroundToolDef[] = [
     name: 'blog_generate_content',
     title: 'Generate content (draft)',
     description:
-      'Path B step 1 — generate a draft without publishing. Pass productName + biSnapshotId to use product tone/images.',
+      'Path B step 1 — generate a draft + local image filePaths without publishing. Pass productName + biSnapshotId to use product tone/images.',
     category: 'draft',
     fields: [
       {
@@ -173,6 +193,12 @@ const TOOLS: PlaygroundToolDef[] = [
         type: 'string',
       },
       {
+        name: 'includeContent',
+        label: 'Include full HTML in response',
+        type: 'boolean',
+        defaultValue: true,
+      },
+      {
         name: 'textModel',
         label: 'Text model (optional)',
         type: 'string',
@@ -187,7 +213,7 @@ const TOOLS: PlaygroundToolDef[] = [
   {
     name: 'blog_get_draft',
     title: 'Get draft',
-    description: 'Inspect a generated draft. Turn on includeContent for full HTML.',
+    description: 'Inspect a generated draft. Turn on includeContent for full HTML + images.',
     category: 'draft',
     fields: [
       {
@@ -207,8 +233,8 @@ const TOOLS: PlaygroundToolDef[] = [
   },
   {
     name: 'blog_publish',
-    title: 'Publish draft / content',
-    description: 'Path B step 2 — publish a draftId (or inline title+content) to WordPress or Naver.',
+    title: 'Publish draftId',
+    description: 'Path B step 2 — publish a stored draftId (images already on the draft).',
     category: 'draft',
     fields: [
       {
@@ -221,17 +247,8 @@ const TOOLS: PlaygroundToolDef[] = [
         name: 'draftId',
         label: 'Draft ID',
         type: 'string',
-        placeholder: 'Preferred — from Generate content',
-      },
-      {
-        name: 'title',
-        label: 'Inline title (if no draft)',
-        type: 'string',
-      },
-      {
-        name: 'content',
-        label: 'Inline HTML content (if no draft)',
-        type: 'textarea',
+        required: true,
+        placeholder: 'From Generate content',
       },
       {
         name: 'tags',
@@ -241,16 +258,89 @@ const TOOLS: PlaygroundToolDef[] = [
       },
     ],
   },
+  {
+    name: 'blog_publish',
+    title: 'Publish HTML + images (one call)',
+    description:
+      'Path C — send title, HTML with [IMAGE:…] markers, and images[] in a single blog_publish call. Upload files below or paste filePath / dataBase64 JSON.',
+    category: 'inline',
+    helperName: 'publish_with_images',
+    fields: [
+      {
+        name: 'connectionId',
+        label: 'Connection ID',
+        type: 'string',
+        required: true,
+        placeholder: 'From List blog connections',
+      },
+      {
+        name: 'title',
+        label: 'Title',
+        type: 'string',
+        required: true,
+        defaultValue: 'Demo: inline draft + images',
+      },
+      {
+        name: 'content',
+        label: 'HTML content (with markers)',
+        type: 'textarea',
+        required: true,
+        defaultValue: SAMPLE_HTML,
+        hint: 'Keep [IMAGE:description:placement] markers where images should appear between paragraphs.',
+      },
+      {
+        name: 'images',
+        label: 'Images JSON (marker order)',
+        type: 'json',
+        defaultValue: SAMPLE_IMAGES_JSON,
+        hint: 'Each item: filePath, dataBase64, or url. Order must match markers in the HTML.',
+      },
+      {
+        name: 'imageFile1',
+        label: 'Image 1 file (optional — overrides images[0])',
+        type: 'file',
+        fileDelivery: 'inline',
+        accept: 'image/*,.png,.jpg,.jpeg,.webp,.gif',
+      },
+      {
+        name: 'imageFile2',
+        label: 'Image 2 file (optional — overrides images[1])',
+        type: 'file',
+        fileDelivery: 'inline',
+        accept: 'image/*,.png,.jpg,.jpeg,.webp,.gif',
+      },
+      {
+        name: 'tags',
+        label: 'Tags',
+        type: 'string',
+        defaultValue: '#demo #blog',
+      },
+    ],
+  },
 ];
 
 const CATEGORIES = [
   { key: 'setup', label: 'Setup' },
   { key: 'schedule', label: 'Path A — Schedule' },
   { key: 'draft', label: 'Path B — Draft + publish' },
+  { key: 'inline', label: 'Path C — HTML + images' },
 ];
 
+function parseImagesJson(raw: unknown): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 export default function BlogMcpPlayground() {
-  const postProcessArgs = useCallback((args: Record<string, any>) => {
+  const postProcessArgs = useCallback((args: Record<string, any>, context: any) => {
     const next = { ...args };
     if (typeof next.topics === 'string' && next.topics.trim()) {
       next.topics = next.topics
@@ -260,6 +350,44 @@ export default function BlogMcpPlayground() {
     } else if (typeof next.topics === 'string') {
       delete next.topics;
     }
+
+    // Path C: merge uploaded files into images[] for a single blog_publish call
+    if (context.tool?.helperName === 'publish_with_images' || context.tool?.category === 'inline') {
+      delete next.imageFile1;
+      delete next.imageFile2;
+
+      const images = parseImagesJson(next.images);
+      const file1 = context.filePayloads?.imageFile1;
+      const file2 = context.filePayloads?.imageFile2;
+
+      if (file1?.base64) {
+        images[0] = {
+          ...(images[0] || {}),
+          description: images[0]?.description || 'Uploaded image 1',
+          placement: images[0]?.placement || 'header',
+          dataBase64: file1.base64,
+          mimeType: file1.mimeType || 'image/png',
+        };
+        delete images[0].filePath;
+      }
+      if (file2?.base64) {
+        images[1] = {
+          ...(images[1] || {}),
+          description: images[1]?.description || 'Uploaded image 2',
+          placement: images[1]?.placement || 'content',
+          dataBase64: file2.base64,
+          mimeType: file2.mimeType || 'image/png',
+        };
+        delete images[1].filePath;
+      }
+
+      if (images.length > 0) {
+        next.images = images;
+      } else {
+        delete next.images;
+      }
+    }
+
     return next;
   }, []);
 
@@ -318,48 +446,94 @@ export default function BlogMcpPlayground() {
       );
     }
 
-    if (data?.draftId || data?.schedule?.id || data?.postUrl) {
+    if (data?.draftId || data?.schedule?.id || data?.postUrl || Array.isArray(data?.images)) {
       return (
-        <dl style={styles.kvGridStyle}>
-          {data.draftId && (
-            <>
-              <dt style={styles.kvTermStyle}>Draft ID</dt>
-              <dd style={styles.kvDescStyle}><code style={styles.inlineCodeStyle}>{data.draftId}</code></dd>
-            </>
+        <div>
+          <dl style={styles.kvGridStyle}>
+            {data.draftId && (
+              <>
+                <dt style={styles.kvTermStyle}>Draft ID</dt>
+                <dd style={styles.kvDescStyle}><code style={styles.inlineCodeStyle}>{data.draftId}</code></dd>
+              </>
+            )}
+            {data.title && (
+              <>
+                <dt style={styles.kvTermStyle}>Title</dt>
+                <dd style={styles.kvDescStyle}>{data.title}</dd>
+              </>
+            )}
+            {typeof data.imageCount === 'number' && (
+              <>
+                <dt style={styles.kvTermStyle}>Images</dt>
+                <dd style={styles.kvDescStyle}>{data.imageCount}</dd>
+              </>
+            )}
+            {data.schedule?.id && (
+              <>
+                <dt style={styles.kvTermStyle}>Schedule ID</dt>
+                <dd style={styles.kvDescStyle}><code style={styles.inlineCodeStyle}>{data.schedule.id}</code></dd>
+              </>
+            )}
+            {data.postUrl && (
+              <>
+                <dt style={styles.kvTermStyle}>Post URL</dt>
+                <dd style={styles.kvDescStyle}>
+                  <a href={data.postUrl} target="_blank" rel="noreferrer">{data.postUrl}</a>
+                </dd>
+              </>
+            )}
+            {data.connectionType && (
+              <>
+                <dt style={styles.kvTermStyle}>Connection</dt>
+                <dd style={styles.kvDescStyle}>{data.connectionType}</dd>
+              </>
+            )}
+            {data.hint && (
+              <>
+                <dt style={styles.kvTermStyle}>Next</dt>
+                <dd style={styles.kvDescStyle}>{data.hint}</dd>
+              </>
+            )}
+            {data.message && (
+              <>
+                <dt style={styles.kvTermStyle}>Message</dt>
+                <dd style={styles.kvDescStyle}>{data.message}</dd>
+              </>
+            )}
+          </dl>
+
+          {Array.isArray(data.images) && data.images.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={styles.miniLabelStyle}>Images (marker order)</div>
+              <div style={styles.tableWrapStyle}>
+                <table style={styles.tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={styles.thStyle}>#</th>
+                      <th style={styles.thStyle}>Placement</th>
+                      <th style={styles.thStyle}>Description</th>
+                      <th style={styles.thStyle}>filePath / url</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.images.map((img: any, i: number) => (
+                      <tr key={img.uuid || i}>
+                        <td style={styles.tdStyle}>{img.index ?? i}</td>
+                        <td style={styles.tdStyle}>{img.placement || '—'}</td>
+                        <td style={styles.tdStyle}>{img.description || '—'}</td>
+                        <td style={styles.tdStyle}>
+                          <code style={styles.inlineCodeStyle}>
+                            {img.filePath || img.url || '—'}
+                          </code>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
-          {data.title && (
-            <>
-              <dt style={styles.kvTermStyle}>Title</dt>
-              <dd style={styles.kvDescStyle}>{data.title}</dd>
-            </>
-          )}
-          {data.schedule?.id && (
-            <>
-              <dt style={styles.kvTermStyle}>Schedule ID</dt>
-              <dd style={styles.kvDescStyle}><code style={styles.inlineCodeStyle}>{data.schedule.id}</code></dd>
-            </>
-          )}
-          {data.postUrl && (
-            <>
-              <dt style={styles.kvTermStyle}>Post URL</dt>
-              <dd style={styles.kvDescStyle}>
-                <a href={data.postUrl} target="_blank" rel="noreferrer">{data.postUrl}</a>
-              </dd>
-            </>
-          )}
-          {data.hint && (
-            <>
-              <dt style={styles.kvTermStyle}>Next</dt>
-              <dd style={styles.kvDescStyle}>{data.hint}</dd>
-            </>
-          )}
-          {data.message && (
-            <>
-              <dt style={styles.kvTermStyle}>Message</dt>
-              <dd style={styles.kvDescStyle}>{data.message}</dd>
-            </>
-          )}
-        </dl>
+        </div>
       );
     }
 
@@ -369,10 +543,11 @@ export default function BlogMcpPlayground() {
   const sessionBar = (
     <div style={playgroundStyles.sessionBarStyle}>
       <div style={{ flex: 1 }}>
-        <div style={playgroundStyles.miniLabelStyle}>Two flows</div>
+        <div style={playgroundStyles.miniLabelStyle}>Three flows</div>
         <p style={{ fontSize: 13, color: '#374151', margin: '4px 0 0', lineHeight: 1.55 }}>
-          <strong>A — Schedule:</strong> list connections → create schedule (bi_products) → run now.<br />
-          <strong>B — Draft:</strong> generate content → get draft → publish with connectionId.
+          <strong>A — Schedule:</strong> list connections → create schedule → run now.<br />
+          <strong>B — Draft:</strong> generate content → publish with draftId.<br />
+          <strong>C — One call:</strong> blog_publish with title + HTML markers + images[] (filePath or upload).
         </p>
       </div>
     </div>
@@ -383,7 +558,7 @@ export default function BlogMcpPlayground() {
       currentHref="/blog-mcp"
       eyebrow="Blog MCP"
       title="Blog schedule & publish playground"
-      subtitle="Schedule auto-generated BI product posts, or generate a draft then publish to WordPress / Naver in a separate step."
+      subtitle="Schedule auto-generated BI posts, generate then publish by draftId, or send HTML + images in a single blog_publish call."
       apiPath="/api/blog"
       tools={TOOLS}
       categories={CATEGORIES}
