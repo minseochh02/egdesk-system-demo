@@ -36,6 +36,54 @@ const TOOLS: PlaygroundToolDef[] = [
     fields: [],
   },
   {
+    name: 'blog_add_connection',
+    title: 'Add blog account',
+    description:
+      'Register a new Naver or WordPress account. Returns connectionId for publish/schedule tools.',
+    category: 'setup',
+    fields: [
+      {
+        name: 'type',
+        label: 'Platform',
+        type: 'select',
+        options: ['naver', 'wordpress'],
+        defaultValue: 'naver',
+        required: true,
+      },
+      {
+        name: 'name',
+        label: 'Display name (optional)',
+        type: 'string',
+        placeholder: 'My Naver Blog',
+      },
+      {
+        name: 'username',
+        label: 'Username / Naver ID',
+        type: 'string',
+        required: true,
+      },
+      {
+        name: 'password',
+        label: 'Password / WP app password',
+        type: 'string',
+        required: true,
+      },
+      {
+        name: 'url',
+        label: 'WordPress site URL',
+        type: 'string',
+        placeholder: 'https://example.com (required for wordpress)',
+        hint: 'Only needed when Platform = wordpress',
+      },
+      {
+        name: 'proxyUrl',
+        label: 'Proxy URL (Naver, optional)',
+        type: 'string',
+        placeholder: 'http://user:pass@host:port',
+      },
+    ],
+  },
+  {
     name: 'blog_schedule_create',
     title: 'Create schedule (auto-gen)',
     description:
@@ -107,6 +155,13 @@ const TOOLS: PlaygroundToolDef[] = [
         type: 'boolean',
         defaultValue: true,
       },
+      {
+        name: 'runNow',
+        label: 'Publish now (run after create)',
+        type: 'boolean',
+        defaultValue: false,
+        hint: 'Create the schedule and immediately generate + publish in the same call.',
+      },
     ],
   },
   {
@@ -146,7 +201,7 @@ const TOOLS: PlaygroundToolDef[] = [
     name: 'blog_schedule_run_now',
     title: 'Run schedule now',
     description:
-      'Path A step 3 — immediately generate + publish for a schedule. May take several minutes.',
+      'Path A — immediately generate + publish for a schedule. May take several minutes.',
     category: 'schedule',
     fields: [
       {
@@ -154,6 +209,38 @@ const TOOLS: PlaygroundToolDef[] = [
         label: 'Schedule ID',
         type: 'string',
         required: true,
+      },
+    ],
+  },
+  {
+    name: 'blog_list_history',
+    title: 'List posted blog history',
+    description:
+      'All scheduled executions + MCP one-off publishes (title, post URL, status, connection).',
+    category: 'history',
+    fields: [
+      {
+        name: 'scheduleId',
+        label: 'Schedule ID filter (optional)',
+        type: 'string',
+      },
+      {
+        name: 'connectionId',
+        label: 'Connection ID filter (optional)',
+        type: 'string',
+      },
+      {
+        name: 'status',
+        label: 'Status filter',
+        type: 'select',
+        options: ['', 'success', 'failure'],
+        defaultValue: '',
+      },
+      {
+        name: 'limit',
+        label: 'Limit',
+        type: 'number',
+        defaultValue: 50,
       },
     ],
   },
@@ -324,6 +411,7 @@ const CATEGORIES = [
   { key: 'schedule', label: 'Path A — Schedule' },
   { key: 'draft', label: 'Path B — Draft + publish' },
   { key: 'inline', label: 'Path C — HTML + images' },
+  { key: 'history', label: 'History' },
 ];
 
 function parseImagesJson(raw: unknown): any[] {
@@ -446,10 +534,87 @@ export default function BlogMcpPlayground() {
       );
     }
 
-    if (data?.draftId || data?.schedule?.id || data?.postUrl || Array.isArray(data?.images)) {
+    if (Array.isArray(data?.history)) {
+      return (
+        <div style={styles.tableWrapStyle}>
+          <div style={{ ...styles.miniLabelStyle, marginBottom: 8 }}>
+            {data.total ?? data.history.length} post(s)
+          </div>
+          <table style={styles.tableStyle}>
+            <thead>
+              <tr>
+                <th style={styles.thStyle}>When</th>
+                <th style={styles.thStyle}>Source</th>
+                <th style={styles.thStyle}>Status</th>
+                <th style={styles.thStyle}>Title</th>
+                <th style={styles.thStyle}>Connection</th>
+                <th style={styles.thStyle}>Post URL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.history.map((h: any) => (
+                <tr key={h.id}>
+                  <td style={styles.tdStyle}>
+                    {h.startedAt ? new Date(h.startedAt).toLocaleString() : '—'}
+                  </td>
+                  <td style={styles.tdStyle}>{h.source}</td>
+                  <td style={styles.tdStyle}>{h.status}</td>
+                  <td style={styles.tdStyle}>{h.title || h.scheduleTitle || '—'}</td>
+                  <td style={styles.tdStyle}>{h.connectionName || h.connectionId || '—'}</td>
+                  <td style={styles.tdStyle}>
+                    {h.postUrl ? (
+                      <a href={h.postUrl} target="_blank" rel="noreferrer">{h.postUrl}</a>
+                    ) : (
+                      h.errorMessage || '—'
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    if (
+      data?.draftId ||
+      data?.schedule?.id ||
+      data?.postUrl ||
+      data?.connectionId ||
+      data?.connection?.id ||
+      Array.isArray(data?.images)
+    ) {
       return (
         <div>
           <dl style={styles.kvGridStyle}>
+            {(data.connectionId || data.connection?.id) && (
+              <>
+                <dt style={styles.kvTermStyle}>Connection ID</dt>
+                <dd style={styles.kvDescStyle}>
+                  <code style={styles.inlineCodeStyle}>
+                    {data.connectionId || data.connection?.id}
+                  </code>
+                </dd>
+              </>
+            )}
+            {data.connection?.type && (
+              <>
+                <dt style={styles.kvTermStyle}>Type</dt>
+                <dd style={styles.kvDescStyle}>{data.connection.type}</dd>
+              </>
+            )}
+            {data.connection?.name && (
+              <>
+                <dt style={styles.kvTermStyle}>Name</dt>
+                <dd style={styles.kvDescStyle}>{data.connection.name}</dd>
+              </>
+            )}
+            {typeof data.updated === 'boolean' && (
+              <>
+                <dt style={styles.kvTermStyle}>Updated existing</dt>
+                <dd style={styles.kvDescStyle}>{String(data.updated)}</dd>
+              </>
+            )}
             {data.draftId && (
               <>
                 <dt style={styles.kvTermStyle}>Draft ID</dt>
@@ -545,9 +710,11 @@ export default function BlogMcpPlayground() {
       <div style={{ flex: 1 }}>
         <div style={playgroundStyles.miniLabelStyle}>Three flows</div>
         <p style={{ fontSize: 13, color: '#374151', margin: '4px 0 0', lineHeight: 1.55 }}>
-          <strong>A — Schedule:</strong> list connections → create schedule → run now.<br />
+          <strong>Setup:</strong> add blog account → copy connectionId.<br />
+          <strong>A — Schedule:</strong> create schedule (optionally Publish now) or run schedule later.<br />
           <strong>B — Draft:</strong> generate content → publish with draftId.<br />
-          <strong>C — One call:</strong> blog_publish with title + HTML markers + images[] (filePath or upload).
+          <strong>C — One call:</strong> blog_publish with title + HTML markers + images[].<br />
+          <strong>History:</strong> blog_list_history for all scheduled + MCP posts.
         </p>
       </div>
     </div>
@@ -567,9 +734,11 @@ export default function BlogMcpPlayground() {
       postProcessArgs={postProcessArgs}
       renderDisplay={renderDisplay}
       runningHints={{
+        blog_schedule_create: 'Creating schedule (and publishing if runNow)…',
         blog_schedule_run_now: 'Generating and publishing — this can take several minutes…',
         blog_generate_content: 'Generating outline and images…',
         blog_publish: 'Publishing to WordPress or Naver…',
+        blog_list_history: 'Loading post history…',
       }}
     />
   );

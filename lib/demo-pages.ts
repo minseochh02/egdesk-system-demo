@@ -138,7 +138,7 @@ export const DEMO_PAGES: DemoPageLink[] = [
     description: 'Schedule auto-gen BI posts, generate then publish by draftId, or send HTML + images in one blog_publish call.',
     href: '/blog-mcp',
     eyebrow: 'Blog automation',
-    items: ['blog_schedule_create', 'blog_generate_content', 'blog_publish'],
+    items: ['blog_add_connection', 'blog_schedule_create', 'blog_list_history', 'blog_publish'],
   },
   {
     title: 'Kakao MCP Guide',
