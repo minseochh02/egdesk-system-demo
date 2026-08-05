@@ -548,6 +548,7 @@ export default function BlogMcpPlayground() {
                 <th style={styles.thStyle}>Status</th>
                 <th style={styles.thStyle}>Title</th>
                 <th style={styles.thStyle}>Connection</th>
+                <th style={styles.thStyle}>Post ID</th>
                 <th style={styles.thStyle}>Post URL</th>
               </tr>
             </thead>
@@ -561,6 +562,9 @@ export default function BlogMcpPlayground() {
                   <td style={styles.tdStyle}>{h.status}</td>
                   <td style={styles.tdStyle}>{h.title || h.scheduleTitle || '—'}</td>
                   <td style={styles.tdStyle}>{h.connectionName || h.connectionId || '—'}</td>
+                  <td style={styles.tdStyle}>
+                    {h.postId ? <code style={styles.inlineCodeStyle}>{h.postId}</code> : '—'}
+                  </td>
                   <td style={styles.tdStyle}>
                     {h.postUrl ? (
                       <a href={h.postUrl} target="_blank" rel="noreferrer">{h.postUrl}</a>
@@ -637,6 +641,14 @@ export default function BlogMcpPlayground() {
               <>
                 <dt style={styles.kvTermStyle}>Schedule ID</dt>
                 <dd style={styles.kvDescStyle}><code style={styles.inlineCodeStyle}>{data.schedule.id}</code></dd>
+              </>
+            )}
+            {data.postId && (
+              <>
+                <dt style={styles.kvTermStyle}>Post ID</dt>
+                <dd style={styles.kvDescStyle}>
+                  <code style={styles.inlineCodeStyle}>{data.postId}</code>
+                </dd>
               </>
             )}
             {data.postUrl && (
