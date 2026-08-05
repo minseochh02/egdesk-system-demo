@@ -50,6 +50,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['startDriveAuthLogin', 'getDriveAuthStatus', 'initDriveSync', 'startDrivePollLoop'],
   },
   {
+    title: 'Knowledge Wiki MCP',
+    description: 'Index Obsidian vault notes and fetch/cache wikiHow how-to guides for agent knowledge exploration.',
+    href: '/knowledge-wiki-mcp',
+    eyebrow: 'Agent knowledge',
+    items: ['indexObsidianVault', 'searchKnowledgeWiki', 'searchWikiHow', 'getWikiHowGuide'],
+  },
+  {
     title: 'EGDesk Config MCP',
     description: 'Fetch or save AI provider API keys (Google, OpenAI, Anthropic, Azure) in AI Keys Manager.',
     href: '/egdesk-config-mcp',
@@ -118,6 +125,20 @@ export const DEMO_PAGES: DemoPageLink[] = [
     href: '/inventory-mcp',
     eyebrow: 'Inventory scanner',
     items: ['inventory_setup_scanner', 'YOLO', 'DINO'],
+  },
+  {
+    title: 'BI Products MCP',
+    description: 'Register Business Identity products/services with description, images, and per-product tone for blog generation.',
+    href: '/bi-products-mcp',
+    eyebrow: 'Product catalog',
+    items: ['bi_list_snapshots', 'bi_register_product', 'bi_list_products'],
+  },
+  {
+    title: 'Blog MCP',
+    description: 'Schedule auto-gen BI product posts, or generate a draft then publish to WordPress / Naver separately.',
+    href: '/blog-mcp',
+    eyebrow: 'Blog automation',
+    items: ['blog_schedule_create', 'blog_generate_content', 'blog_publish'],
   },
   {
     title: 'Kakao MCP Guide',
