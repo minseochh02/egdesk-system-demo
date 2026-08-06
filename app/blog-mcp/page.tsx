@@ -406,9 +406,9 @@ const TOOLS: PlaygroundToolDef[] = [
   },
   {
     name: 'blog_article_stats',
-    title: 'Article stats (sync + query)',
+    title: 'Article stats',
     description:
-      'Naver only — sync from blog.stat.naver.com (Excel + live 누적 조회수/공감/댓글 and today’s daily rows), store in SQLite, then return series/referrers/demo. Set sync=false to query stored data only.',
+      'Naver only — always syncs fresh stats from blog.stat.naver.com (Excel + live 누적 조회수/공감/댓글 and today’s daily rows), stores in SQLite, then returns series/referrers/demo.',
     category: 'stats',
     fields: [
       {
@@ -433,12 +433,6 @@ const TOOLS: PlaygroundToolDef[] = [
         hint: 'Uses publish history entries that have postId',
       },
       {
-        name: 'sync',
-        label: 'Download from Naver before returning',
-        type: 'boolean',
-        defaultValue: true,
-      },
-      {
         name: 'metric',
         label: 'Filter returned rows',
         type: 'select',
@@ -454,37 +448,6 @@ const TOOLS: PlaygroundToolDef[] = [
         name: 'dateTo',
         label: 'Date to (YYYY-MM-DD)',
         type: 'string',
-      },
-      {
-        name: 'limit',
-        label: 'Row limit',
-        type: 'number',
-        defaultValue: 50,
-      },
-    ],
-  },
-  {
-    name: 'blog_article_stats',
-    title: 'Query stored stats only',
-    description: 'Read SQLite without hitting Naver (sync=false).',
-    category: 'stats',
-    helperName: 'query_only',
-    fields: [
-      {
-        name: 'connectionId',
-        label: 'Connection ID filter',
-        type: 'string',
-      },
-      {
-        name: 'postId',
-        label: 'Post ID',
-        type: 'string',
-      },
-      {
-        name: 'sync',
-        label: 'Sync (forced false)',
-        type: 'boolean',
-        defaultValue: false,
       },
       {
         name: 'limit',
@@ -528,10 +491,6 @@ export default function BlogMcpPlayground() {
         .filter(Boolean);
     } else if (typeof next.topics === 'string') {
       delete next.topics;
-    }
-
-    if (context.tool?.helperName === 'query_only') {
-      next.sync = false;
     }
 
     if (next.metric === '') delete next.metric;
@@ -898,7 +857,7 @@ export default function BlogMcpPlayground() {
           <strong>B — Draft:</strong> generate content → publish with draftId.<br />
           <strong>C — One call:</strong> blog_publish with title + HTML markers + images[].<br />
           <strong>History:</strong> blog_list_history for all scheduled + MCP posts.<br />
-          <strong>Stats:</strong> blog_article_stats syncs Naver article stats (live totals + daily rows) and returns stored series.
+          <strong>Stats:</strong> blog_article_stats always syncs fresh Naver article stats (live totals + daily rows).
         </p>
       </div>
     </div>
