@@ -403,6 +403,7 @@ const TOOLS: PlaygroundToolDef[] = [
         defaultValue: '#demo #blog',
       },
     ],
+  },
   {
     name: 'blog_article_stats',
     title: 'Article stats (sync + query)',
