@@ -408,7 +408,7 @@ const TOOLS: PlaygroundToolDef[] = [
     name: 'blog_article_stats',
     title: 'Article stats',
     description:
-      'Naver only — always syncs fresh stats from blog.stat.naver.com (Excel + live 누적 조회수/공감/댓글 and today’s daily rows), stores in SQLite, then returns series/referrers/demo.',
+      'Naver only — always syncs fresh stats for one or many posts from blog.stat.naver.com (Excel + live 누적 조회수/공감/댓글 and today’s daily rows), then returns per-post series/referrers/demo.',
     category: 'stats',
     fields: [
       {
@@ -419,18 +419,25 @@ const TOOLS: PlaygroundToolDef[] = [
         placeholder: 'From List blog connections',
       },
       {
-        name: 'postId',
-        label: 'Post ID (logNo)',
-        type: 'string',
-        placeholder: '224368793124 — or use fromHistory',
-        hint: 'From blog_list_history after publish',
+        name: 'postIds',
+        label: 'Post IDs (logNo) — one or many',
+        type: 'textarea',
+        placeholder: '224368793124\n224368793125\n224368793126',
+        hint: 'One logNo per line, or comma-separated. Leave empty and turn on fromHistory to sync recent published posts.',
       },
       {
         name: 'fromHistory',
         label: 'Sync recent published posts from history',
         type: 'boolean',
         defaultValue: false,
-        hint: 'Uses publish history entries that have postId',
+        hint: 'Used only when Post IDs is empty. Syncs posts from blog_list_history that have postId.',
+      },
+      {
+        name: 'limit',
+        label: 'Max posts (fromHistory) / row limit',
+        type: 'number',
+        defaultValue: 20,
+        hint: 'Caps how many history posts to sync (max 100). Also limits returned series rows.',
       },
       {
         name: 'metric',
@@ -448,12 +455,6 @@ const TOOLS: PlaygroundToolDef[] = [
         name: 'dateTo',
         label: 'Date to (YYYY-MM-DD)',
         type: 'string',
-      },
-      {
-        name: 'limit',
-        label: 'Row limit',
-        type: 'number',
-        defaultValue: 50,
       },
     ],
   },
@@ -494,6 +495,22 @@ export default function BlogMcpPlayground() {
     }
 
     if (next.metric === '') delete next.metric;
+
+    if (typeof next.postIds === 'string') {
+      const ids = next.postIds
+        .split(/[\n,;\s]+/)
+        .map((s: string) => s.trim())
+        .filter((s: string) => /^\d+$/.test(s));
+      if (ids.length) next.postIds = ids;
+      else delete next.postIds;
+    }
+    if (Array.isArray(next.postIds) && next.postIds.length === 0) {
+      delete next.postIds;
+    }
+    // Explicit postIds wins over fromHistory
+    if (Array.isArray(next.postIds) && next.postIds.length > 0) {
+      next.fromHistory = false;
+    }
 
     // Path C: merge uploaded files into images[] for a single blog_publish call
     if (context.tool?.helperName === 'publish_with_images' || context.tool?.category === 'inline') {
