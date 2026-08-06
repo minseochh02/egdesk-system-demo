@@ -403,6 +403,95 @@ const TOOLS: PlaygroundToolDef[] = [
         defaultValue: '#demo #blog',
       },
     ],
+  {
+    name: 'blog_article_stats',
+    title: 'Article stats (sync + query)',
+    description:
+      'Naver only — sync from blog.stat.naver.com (Excel + live 누적 조회수/공감/댓글 and today’s daily rows), store in SQLite, then return series/referrers/demo. Set sync=false to query stored data only.',
+    category: 'stats',
+    fields: [
+      {
+        name: 'connectionId',
+        label: 'Naver connection ID',
+        type: 'string',
+        required: true,
+        placeholder: 'From List blog connections',
+      },
+      {
+        name: 'postId',
+        label: 'Post ID (logNo)',
+        type: 'string',
+        placeholder: '224368793124 — or use fromHistory',
+        hint: 'From blog_list_history after publish',
+      },
+      {
+        name: 'fromHistory',
+        label: 'Sync recent published posts from history',
+        type: 'boolean',
+        defaultValue: false,
+        hint: 'Uses publish history entries that have postId',
+      },
+      {
+        name: 'sync',
+        label: 'Download from Naver before returning',
+        type: 'boolean',
+        defaultValue: true,
+      },
+      {
+        name: 'metric',
+        label: 'Filter returned rows',
+        type: 'select',
+        options: ['', 'CV', 'LIKE', 'COMMENT', 'REFERER', 'DEMO'],
+        defaultValue: '',
+      },
+      {
+        name: 'dateFrom',
+        label: 'Date from (YYYY-MM-DD)',
+        type: 'string',
+      },
+      {
+        name: 'dateTo',
+        label: 'Date to (YYYY-MM-DD)',
+        type: 'string',
+      },
+      {
+        name: 'limit',
+        label: 'Row limit',
+        type: 'number',
+        defaultValue: 50,
+      },
+    ],
+  },
+  {
+    name: 'blog_article_stats',
+    title: 'Query stored stats only',
+    description: 'Read SQLite without hitting Naver (sync=false).',
+    category: 'stats',
+    helperName: 'query_only',
+    fields: [
+      {
+        name: 'connectionId',
+        label: 'Connection ID filter',
+        type: 'string',
+      },
+      {
+        name: 'postId',
+        label: 'Post ID',
+        type: 'string',
+      },
+      {
+        name: 'sync',
+        label: 'Sync (forced false)',
+        type: 'boolean',
+        defaultValue: false,
+      },
+      {
+        name: 'limit',
+        label: 'Row limit',
+        type: 'number',
+        defaultValue: 50,
+      },
+    ],
   },
 ];
 
@@ -412,6 +501,7 @@ const CATEGORIES = [
   { key: 'draft', label: 'Path B — Draft + publish' },
   { key: 'inline', label: 'Path C — HTML + images' },
   { key: 'history', label: 'History' },
+  { key: 'stats', label: 'Naver stats' },
 ];
 
 function parseImagesJson(raw: unknown): any[] {
@@ -438,6 +528,12 @@ export default function BlogMcpPlayground() {
     } else if (typeof next.topics === 'string') {
       delete next.topics;
     }
+
+    if (context.tool?.helperName === 'query_only') {
+      next.sync = false;
+    }
+
+    if (next.metric === '') delete next.metric;
 
     // Path C: merge uploaded files into images[] for a single blog_publish call
     if (context.tool?.helperName === 'publish_with_images' || context.tool?.category === 'inline') {
@@ -481,6 +577,80 @@ export default function BlogMcpPlayground() {
 
   const renderDisplay = useCallback((data: any) => {
     const styles = playgroundStyles;
+
+    if (Array.isArray(data?.posts)) {
+      return (
+        <div>
+          <div style={styles.miniLabelStyle}>
+            {data.synced ? 'Synced from Naver' : 'Stored stats'} · {data.posts.length} post(s)
+          </div>
+          {data.posts.map((post: any) => (
+            <div key={post.postId} style={{ marginBottom: 24 }}>
+              <dl style={styles.kvGridStyle}>
+                <dt style={styles.kvTermStyle}>Post</dt>
+                <dd style={styles.kvDescStyle}>
+                  <code style={styles.inlineCodeStyle}>{post.postId}</code>
+                  {post.postTitle ? ` — ${post.postTitle}` : ''}
+                </dd>
+                {post.liveTotals && (
+                  <>
+                    <dt style={styles.kvTermStyle}>Live 누적</dt>
+                    <dd style={styles.kvDescStyle}>
+                      조회 {post.liveTotals.views ?? '—'} · 공감 {post.liveTotals.likes ?? '—'} · 댓글{' '}
+                      {post.liveTotals.comments ?? '—'}
+                    </dd>
+                  </>
+                )}
+                {post.totals && (
+                  <>
+                    <dt style={styles.kvTermStyle}>Stored daily totals</dt>
+                    <dd style={styles.kvDescStyle}>
+                      views {post.totals.views ?? 0} · likes {post.totals.likes ?? 0} · comments{' '}
+                      {post.totals.comments ?? 0}
+                    </dd>
+                  </>
+                )}
+                {post.sync && (
+                  <>
+                    <dt style={styles.kvTermStyle}>Sync</dt>
+                    <dd style={styles.kvDescStyle}>
+                      {post.sync.status}
+                      {post.sync.excelViewsTotal !== undefined
+                        ? ` · Excel views total ${post.sync.excelViewsTotal}`
+                        : ''}
+                    </dd>
+                  </>
+                )}
+              </dl>
+
+              {Array.isArray(post.series) && post.series.length > 0 && (
+                <div style={styles.tableWrapStyle}>
+                  <div style={styles.miniLabelStyle}>Daily series</div>
+                  <table style={styles.tableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={styles.thStyle}>Date</th>
+                        <th style={styles.thStyle}>Metric</th>
+                        <th style={styles.thStyle}>Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {post.series.slice(0, 20).map((row: any) => (
+                        <tr key={`${row.statDate}-${row.metric}`}>
+                          <td style={styles.tdStyle}>{row.statDate}</td>
+                          <td style={styles.tdStyle}>{row.metric}</td>
+                          <td style={styles.tdStyle}>{row.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
 
     if (Array.isArray(data?.connections)) {
       return (
@@ -726,7 +896,8 @@ export default function BlogMcpPlayground() {
           <strong>A — Schedule:</strong> create schedule (optionally Publish now) or run schedule later.<br />
           <strong>B — Draft:</strong> generate content → publish with draftId.<br />
           <strong>C — One call:</strong> blog_publish with title + HTML markers + images[].<br />
-          <strong>History:</strong> blog_list_history for all scheduled + MCP posts.
+          <strong>History:</strong> blog_list_history for all scheduled + MCP posts.<br />
+          <strong>Stats:</strong> blog_article_stats syncs Naver article stats (live totals + daily rows) and returns stored series.
         </p>
       </div>
     </div>
@@ -737,7 +908,7 @@ export default function BlogMcpPlayground() {
       currentHref="/blog-mcp"
       eyebrow="Blog MCP"
       title="Blog schedule & publish playground"
-      subtitle="Schedule auto-generated BI posts, generate then publish by draftId, or send HTML + images in a single blog_publish call."
+      subtitle="Schedule auto-generated BI posts, publish HTML + images in one call, and sync Naver article stats (live views + daily series)."
       apiPath="/api/blog"
       tools={TOOLS}
       categories={CATEGORIES}
@@ -751,6 +922,7 @@ export default function BlogMcpPlayground() {
         blog_generate_content: 'Generating outline and images…',
         blog_publish: 'Publishing to WordPress or Naver…',
         blog_list_history: 'Loading post history…',
+        blog_article_stats: 'Syncing Naver article stats (headless browser) — can take a minute…',
       }}
     />
   );
