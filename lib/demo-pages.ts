@@ -147,6 +147,14 @@ export const DEMO_PAGES: DemoPageLink[] = [
     eyebrow: 'Kakao automation',
     items: ['channels', 'bots', 'callbacks'],
   },
+  {
+    title: 'Phone MCP',
+    description:
+      'Pair Google Messages Web, sync inbox/threads/contacts, enqueue SMS, and manage marketing consent / 무료수신거부.',
+    href: '/phone-mcp',
+    eyebrow: 'SMS / Google Messages',
+    items: ['phone_connect', 'phone_sync_conversations', 'phone_send', 'phone_consent_link_create'],
+  },
 ];
 
 /** Nav links for playground headers (excludes current page). */
