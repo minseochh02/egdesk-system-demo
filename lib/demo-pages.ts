@@ -155,6 +155,19 @@ export const DEMO_PAGES: DemoPageLink[] = [
     eyebrow: 'SMS / Google Messages',
     items: ['phone_connect', 'phone_sync_conversations', 'phone_send', 'phone_consent_link_create'],
   },
+  {
+    title: 'Instagram MCP',
+    description:
+      'Manage Instagram connections, publish posts, scrape likes/comments, and browse publish history.',
+    href: '/instagram-mcp',
+    eyebrow: 'Instagram automation',
+    items: [
+      'instagram_list_connections',
+      'instagram_create_post',
+      'instagram_sync_post_stats',
+      'instagram_list_history',
+    ],
+  },
 ];
 
 /** Nav links for playground headers (excludes current page). */
