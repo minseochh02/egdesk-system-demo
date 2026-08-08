@@ -168,6 +168,31 @@ export const DEMO_PAGES: DemoPageLink[] = [
       'instagram_list_history',
     ],
   },
+  {
+    title: 'Brand Face MCP',
+    description:
+      'Generate AI brand face / spokesperson personas on BI snapshots for consistent YouTube Shorts on-camera talent.',
+    href: '/brand-face-mcp',
+    eyebrow: 'Brand spokesperson',
+    items: [
+      'brand_face_generate',
+      'brand_face_list',
+      'brand_face_set_preferred',
+    ],
+  },
+  {
+    title: 'YouTube Shorts MCP',
+    description:
+      'Manage YouTube connections, generate multi-scene Shorts with brand face, schedule auto uploads, and inspect history.',
+    href: '/youtube-mcp',
+    eyebrow: 'YouTube Shorts',
+    items: [
+      'youtube_generate_shorts',
+      'youtube_schedule_create',
+      'youtube_schedule_run_now',
+      'youtube_list_history',
+    ],
+  },
 ];
 
 /** Nav links for playground headers (excludes current page). */
