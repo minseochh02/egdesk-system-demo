@@ -87,7 +87,7 @@ const TOOLS: PlaygroundToolDef[] = [
     name: 'blog_schedule_create',
     title: 'Create schedule (auto-gen)',
     description:
-      'Path A — register a recurring schedule. EGDesk generates and publishes on the cron, or call Run now.',
+      'Path A — recurring schedule. For bi_products: register product photos in BI Products MCP first (imageCount>0). runNow posts immediately.',
     category: 'schedule',
     fields: [
       {

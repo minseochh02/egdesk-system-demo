@@ -128,7 +128,8 @@ export const DEMO_PAGES: DemoPageLink[] = [
   },
   {
     title: 'BI Products MCP',
-    description: 'Register Business Identity products/services with description, images, and per-product tone for blog generation.',
+    description:
+      'Register BI products with photos (required before Instagram/YouTube/blog bi_products schedules) — confirm imageCount > 0.',
     href: '/bi-products-mcp',
     eyebrow: 'Product catalog',
     items: ['bi_list_snapshots', 'bi_register_product', 'bi_list_products'],
@@ -158,13 +159,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
   {
     title: 'Instagram MCP',
     description:
-      'Manage Instagram connections, publish posts, scrape likes/comments, and browse publish history.',
+      'Generate/schedule product-grounded posts (register BI photos first), publish, sync likes/comments, and browse history.',
     href: '/instagram-mcp',
     eyebrow: 'Instagram automation',
     items: [
-      'instagram_list_connections',
-      'instagram_create_post',
-      'instagram_sync_post_stats',
+      'instagram_generate_content',
+      'instagram_schedule_create',
+      'instagram_schedule_run_now',
       'instagram_list_history',
     ],
   },

@@ -25,7 +25,8 @@ const TOOLS: PlaygroundToolDef[] = [
   {
     name: 'bi_list_products',
     title: 'List products',
-    description: 'List catalog products for a snapshot, including toneVoice and image counts.',
+    description:
+      'List catalog products for a snapshot. Confirm imageCount > 0 before Instagram/YouTube/blog bi_products schedules.',
     category: 'catalog',
     fields: [
       {
@@ -67,7 +68,7 @@ const TOOLS: PlaygroundToolDef[] = [
     name: 'bi_register_product',
     title: 'Register product',
     description:
-      'Create or upsert a product/service with description, tone/personality, and optional image. Matching is by name.',
+      'Create or upsert a product with description, tone, and photos. For Instagram/YouTube/blog bi_products schedules, attach a product image here first — schedules do not accept productImages directly.',
     category: 'write',
     fields: [
       {
@@ -95,7 +96,7 @@ const TOOLS: PlaygroundToolDef[] = [
         label: 'Tone / personality',
         type: 'textarea',
         placeholder: 'Warm and reassuring for parents; practical Korean; lightly playful but trustworthy',
-        hint: 'Used when generating blog posts about this product (overrides brand tone).',
+        hint: 'Used when generating blog/SNS posts about this product (overrides brand tone).',
       },
       {
         name: 'category',
@@ -121,7 +122,7 @@ const TOOLS: PlaygroundToolDef[] = [
         type: 'file',
         fileDelivery: 'inline',
         accept: 'image/*,.png,.jpg,.jpeg,.webp,.gif',
-        hint: 'Sent as inline base64 to bi_register_product.',
+        hint: 'Required for product-grounded Instagram/YouTube/blog schedules. Sent as inline base64 to bi_register_product.',
       },
       {
         name: 'replaceAttachments',
@@ -134,7 +135,8 @@ const TOOLS: PlaygroundToolDef[] = [
   {
     name: 'bi_update_product',
     title: 'Update product',
-    description: 'Patch fields on an existing catalog product.',
+    description:
+      'Patch fields or add photos when imageCount is 0 (required before SNS bi_products schedules).',
     category: 'write',
     fields: [
       {
@@ -299,8 +301,11 @@ export default function BiProductsMcpPlayground() {
       <div style={{ flex: 1 }}>
         <div style={playgroundStyles.miniLabelStyle}>Suggested flow</div>
         <p style={{ fontSize: 13, color: '#374151', margin: '4px 0 0', lineHeight: 1.55 }}>
-          1) List snapshots → 2) Register product (description + tone + image) → 3) Open{' '}
-          <strong>Blog MCP</strong> to schedule or generate a post for that product.
+          1) List snapshots → 2) Register product with <strong>photo</strong> (description + tone +
+          image) → 3) List products and confirm <code style={playgroundStyles.inlineCodeStyle}>imageCount &gt; 0</code>{' '}
+          → 4) Open <strong>Instagram</strong>, <strong>YouTube</strong>, or <strong>Blog</strong> MCP
+          and create a schedule with <code style={playgroundStyles.inlineCodeStyle}>topicSource=bi_products</code>.
+          Schedulers load photos from this catalog — they do not take productImages on create.
         </p>
       </div>
     </div>
@@ -311,7 +316,7 @@ export default function BiProductsMcpPlayground() {
       currentHref="/bi-products-mcp"
       eyebrow="BI Products MCP"
       title="Product catalog playground"
-      subtitle="Register Business Identity products/services with description, images, and per-product tone for EGDesk blog generation."
+      subtitle="Register Business Identity products with photos and tone — required before Instagram/YouTube/blog bi_products schedules."
       apiPath="/api/bi-products"
       tools={TOOLS}
       categories={CATEGORIES}

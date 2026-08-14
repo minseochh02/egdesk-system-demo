@@ -102,7 +102,7 @@ const TOOLS: PlaygroundToolDef[] = [
     name: 'youtube_schedule_create',
     title: 'Create Shorts schedule',
     description:
-      'Recurring Shorts auto-gen. Use bi_products + biSnapshotId for product grounding and brand face. Set Publish now to run immediately.',
+      'Recurring Shorts auto-gen. For bi_products: register product photos in BI Products MCP first (imageCount>0), then pass biSnapshotId + product names. Schedules do not accept productImages directly.',
     category: 'schedule',
     fields: [
       {
@@ -630,14 +630,15 @@ export default function YouTubeMcpPlayground() {
             lineHeight: 1.55,
           }}
         >
-          <strong>A — Brand face first:</strong> Brand Face MCP → generate preferred
-          face on a snapshot.
+          <strong>A — Brand face + product photos:</strong> Brand Face MCP for spokesperson;
+          BI Products MCP to register product photos (<code style={playgroundStyles.inlineCodeStyle}>imageCount &gt; 0</code>).
           <br />
           <strong>B — Preview:</strong> Generate Shorts (no upload) with that{' '}
           <code style={playgroundStyles.inlineCodeStyle}>biSnapshotId</code>
           ; optionally Generate local video.
           <br />
           <strong>C — Publish:</strong> Create schedule with{' '}
+          <code style={playgroundStyles.inlineCodeStyle}>topicSource=bi_products</code> (photos from BI catalog) +{' '}
           <code style={playgroundStyles.inlineCodeStyle}>runNow</code>, or Debug
           upload with a local mp4.
           <br />

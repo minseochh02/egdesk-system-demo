@@ -197,7 +197,7 @@ const TOOLS: ToolDef[] = [
     name: 'uploadImage',
     title: 'Upload file',
     description:
-      'Upload a file to the images table. Turn on YOLO to classify paper vs object (yolo26n-paper) and store object crops.',
+      'Insert an images row, then attach bytes via user_data_upload_file with virtual columnName "file" (not a schema column). Optional YOLO classifies paper vs object and stores object crops.',
     category: 'files',
     fields: [
       { name: 'data', label: 'File data (base64)', type: 'textarea', required: true, placeholder: 'SGVsbG8gV29ybGQ=', hint: 'Use the file picker below to select a file.' },
