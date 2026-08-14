@@ -8,6 +8,12 @@ import {
 } from '@/components/mcp-playground';
 import { apiFetch } from '@/lib/api';
 import { parseMcpResult } from '@/lib/mcp-utils';
+import {
+  getVisitorGoogleStatus,
+  listVisitorDriveFiles,
+  signOutVisitorGoogle,
+  startVisitorGoogleLogin,
+} from '@/egdesk-helpers';
 
 const FOLDER_TOOLS = new Set(['drive_init', 'drive_set_target_folders']);
 
@@ -44,16 +50,16 @@ const TOOLS: PlaygroundToolDef[] = [
     name: 'drive_auth_status',
     title: 'Auth status',
     description:
-      'Check whether Drive can authenticate (service account or Google OAuth). Poll after Connect Google until connected.',
+      'Check THIS EGDesk instance Drive credentials (owner MCP). Does not report website-visitor Google login. Poll after Connect EGDesk until connected.',
     category: 'setup',
     helperName: 'getDriveAuthStatus',
     fields: [],
   },
   {
     name: 'drive_auth_login',
-    title: 'Start Google login',
+    title: 'Start owner Google login',
     description:
-      'Returns authUrl immediately. Open it to show Google account picker + consent; EGDesk receives the callback. Prefer the Connect Google button above.',
+      'Owner MCP only — configures THIS EGDesk instance. Callback goes to EGDesk, not this website. Visitors should use Sign in with Google (visitor) above.',
     category: 'setup',
     helperName: 'startDriveAuthLogin',
     fields: [
@@ -62,7 +68,7 @@ const TOOLS: PlaygroundToolDef[] = [
         label: 'Also open EGDesk OAuth window',
         type: 'boolean',
         defaultValue: false,
-        hint: 'Leave off for website flow — this page opens authUrl in a popup.',
+        hint: 'Leave off unless you want EGDesk to open its own OAuth window.',
       },
       {
         name: 'forceConsent',
@@ -243,7 +249,7 @@ const CATEGORIES = [
 ];
 
 const RUNNING_HINTS: Record<string, string> = {
-  drive_auth_login: 'Starting Google OAuth…',
+  drive_auth_login: 'Starting owner Google OAuth for this EGDesk instance…',
   drive_auth_status: 'Checking Drive credentials…',
   drive_init: 'Saving folders and change cursor…',
   drive_watch: 'Registering Google Drive watch channel…',
@@ -436,6 +442,19 @@ export default function DrivePlayground() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authWaiting, setAuthWaiting] = useState(false);
+  const [visitorStatus, setVisitorStatus] = useState<{
+    connected?: boolean;
+    email?: string | null;
+    message?: string;
+  } | null>(null);
+  const [visitorBusy, setVisitorBusy] = useState(false);
+  const [visitorError, setVisitorError] = useState<string | null>(null);
+  const [visitorFiles, setVisitorFiles] = useState<Array<{
+    id: string;
+    name?: string;
+    mimeType?: string;
+    webViewLink?: string;
+  }>>([]);
   const knownEventKeys = useRef<Set<string>>(new Set());
   const listeningRef = useRef(false);
   const authPollRef = useRef<number | null>(null);
@@ -578,7 +597,7 @@ export default function DrivePlayground() {
             setAuthError(null);
           } else if (Date.now() - startedAt > 3 * 60 * 1000) {
             stopAuthPoll();
-            setAuthError('Timed out waiting for Google consent. Try Connect Google again.');
+            setAuthError('Timed out waiting for Google consent. Try Connect EGDesk again.');
           }
         } catch (err: any) {
           // keep polling briefly; EGDesk may still be handling callback
@@ -624,6 +643,69 @@ export default function DrivePlayground() {
       setAuthBusy(false);
     }
   }, [callDriveTool, refreshAuthStatus, startAuthPoll, stopAuthPoll]);
+
+  const refreshVisitorStatus = useCallback(async () => {
+    try {
+      const status = await getVisitorGoogleStatus();
+      setVisitorStatus(status);
+      setVisitorError(null);
+      return status;
+    } catch (err: any) {
+      const message = err?.message || String(err);
+      setVisitorStatus(null);
+      if (message.includes('not signed in') || message.includes('not configured')) {
+        setVisitorError(null);
+      } else {
+        setVisitorError(message);
+      }
+      return null;
+    }
+  }, []);
+
+  const connectVisitorGoogle = useCallback(async () => {
+    setVisitorBusy(true);
+    setVisitorError(null);
+    try {
+      await startVisitorGoogleLogin({ next: '/drive-mcp', forceConsent: true });
+    } catch (err: any) {
+      setVisitorError(err?.message || String(err));
+      setVisitorBusy(false);
+    }
+  }, []);
+
+  const disconnectVisitorGoogle = useCallback(async () => {
+    setVisitorBusy(true);
+    setVisitorError(null);
+    try {
+      await signOutVisitorGoogle();
+      setVisitorStatus(null);
+      setVisitorFiles([]);
+    } catch (err: any) {
+      setVisitorError(err?.message || String(err));
+    } finally {
+      setVisitorBusy(false);
+    }
+  }, []);
+
+  const loadVisitorFiles = useCallback(async () => {
+    setVisitorBusy(true);
+    setVisitorError(null);
+    try {
+      const result = await listVisitorDriveFiles({ pageSize: 10 });
+      setVisitorFiles(Array.isArray(result?.files) ? result.files : []);
+      if (result?.email) {
+        setVisitorStatus((prev) => ({ ...(prev || {}), email: result.email, connected: true }));
+      }
+    } catch (err: any) {
+      setVisitorError(err?.message || String(err));
+    } finally {
+      setVisitorBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshVisitorStatus();
+  }, [refreshVisitorStatus]);
 
   // While listening: refresh UI from drive.db every 4s (backend poll loop does Drive API)
   useEffect(() => {
@@ -1112,7 +1194,7 @@ export default function DrivePlayground() {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <div>
-            <div style={playgroundStyles.miniLabelStyle}>Google auth (MCP)</div>
+            <div style={playgroundStyles.miniLabelStyle}>Google auth (EGDesk owner MCP)</div>
             <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span
                 style={{
@@ -1128,7 +1210,7 @@ export default function DrivePlayground() {
             <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0', lineHeight: 1.45 }}>
               {authConnected
                 ? authInfo?.message || 'Ready for Init sync / Start listening.'
-                : 'Connect Google here (account picker + consent). EGDesk stores the token; this page polls until connected.'}
+                : 'Connect EGDesk here (account picker + consent). Token is stored on this EGDesk instance — not for website visitors.'}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1144,7 +1226,7 @@ export default function DrivePlayground() {
                 opacity: authBusy || authWaiting ? 0.7 : 1,
               }}
             >
-              {authBusy ? 'Starting…' : authWaiting ? 'Waiting…' : authConnected ? 'Re-connect Google' : 'Connect Google'}
+              {authBusy ? 'Starting…' : authWaiting ? 'Waiting…' : authConnected ? 'Re-connect EGDesk' : 'Connect EGDesk'}
             </button>
             <button
               type="button"
@@ -1167,6 +1249,95 @@ export default function DrivePlayground() {
         </div>
         {authError && (
           <p style={{ fontSize: 13, color: '#dc2626', margin: 0 }}>{authError}</p>
+        )}
+      </div>
+
+      <div
+        style={{
+          ...playgroundStyles.sessionBarStyle,
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          gap: 12,
+          borderColor: visitorStatus?.connected ? '#bfdbfe' : '#e5e7eb',
+          background: visitorStatus?.connected ? '#eff6ff' : '#f8fafc',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div>
+            <div style={playgroundStyles.miniLabelStyle}>Google auth (website visitor)</div>
+            <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: visitorStatus?.connected ? '#2563eb' : '#9ca3af',
+                  display: 'inline-block',
+                }}
+              />
+              {visitorStatus?.connected
+                ? visitorStatus.email || 'Visitor Google connected'
+                : 'Visitor not signed in'}
+            </p>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0', lineHeight: 1.45 }}>
+              Other people using this site sign in here. Their Drive/Sheets stay on their Google
+              account — this does not overwrite EGDesk owner credentials.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => void connectVisitorGoogle()}
+              disabled={visitorBusy}
+              style={{
+                ...playgroundStyles.secondaryBtnStyle,
+                background: '#1d4ed8',
+                color: '#fff',
+                borderColor: '#1d4ed8',
+                opacity: visitorBusy ? 0.7 : 1,
+              }}
+            >
+              {visitorBusy ? 'Working…' : visitorStatus?.connected ? 'Re-sign in as visitor' : 'Sign in with Google (visitor)'}
+            </button>
+            {visitorStatus?.connected && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void loadVisitorFiles()}
+                  disabled={visitorBusy}
+                  style={playgroundStyles.secondaryBtnStyle}
+                >
+                  List my files
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void disconnectVisitorGoogle()}
+                  disabled={visitorBusy}
+                  style={playgroundStyles.secondaryBtnStyle}
+                >
+                  Sign out
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        {visitorError && (
+          <p style={{ fontSize: 13, color: '#dc2626', margin: 0 }}>{visitorError}</p>
+        )}
+        {visitorFiles.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#374151' }}>
+            {visitorFiles.map((file) => (
+              <li key={file.id}>
+                {file.webViewLink ? (
+                  <a href={file.webViewLink} target="_blank" rel="noreferrer" style={{ color: '#1d4ed8' }}>
+                    {file.name || file.id}
+                  </a>
+                ) : (
+                  file.name || file.id
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
@@ -1246,7 +1417,7 @@ export default function DrivePlayground() {
         {folderAccessError && (
           <p style={{ fontSize: 13, color: '#b45309', margin: 0, lineHeight: 1.45 }}>
             Folder not visible to the signed-in Google account: {folderAccessError}
-            {' '}Use Connect Google above (or share the folder with the service account), then Init sync again.
+            {' '}Use Connect EGDesk above (or share the folder with the service account), then Init sync again.
           </p>
         )}
 
@@ -1368,7 +1539,7 @@ export default function DrivePlayground() {
       currentHref="/drive-mcp"
       eyebrow="EGDesk Drive MCP"
       title="Drive Playground"
-      subtitle="Connect Google (MCP auth) → Init a folder → Start listening → upload a file. Consent opens in a popup; this page waits until EGDesk has the token."
+      subtitle="Owner: Connect EGDesk → Init a folder → Start listening. Visitors: Sign in with Google on this site to use their own Drive/Sheets."
       apiPath="/api/drive"
       tools={TOOLS}
       categories={CATEGORIES}
