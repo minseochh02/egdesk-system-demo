@@ -13,7 +13,7 @@ import {
   listVisitorDriveFiles,
   signOutVisitorGoogle,
   startVisitorGoogleLogin,
-} from '@/egdesk-helpers';
+} from '@/egdesk-visitor-google';
 
 const FOLDER_TOOLS = new Set(['drive_init', 'drive_set_target_folders']);
 
@@ -59,7 +59,7 @@ const TOOLS: PlaygroundToolDef[] = [
     name: 'drive_auth_login',
     title: 'Start owner Google login',
     description:
-      'Owner MCP only — configures THIS EGDesk instance. Callback goes to EGDesk, not this website. Visitors should use Sign in with Google (visitor) above.',
+      'Owner MCP only — configures THIS EGDesk instance. Callback goes to EGDesk. Visitors sign in separately as EGDesk users.',
     category: 'setup',
     helperName: 'startDriveAuthLogin',
     fields: [
@@ -1280,8 +1280,8 @@ export default function DrivePlayground() {
                 : 'Visitor not signed in'}
             </p>
             <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0', lineHeight: 1.45 }}>
-              Other people using this site sign in here. Their Drive/Sheets stay on their Google
-              account — this does not overwrite EGDesk owner credentials.
+              Visitors sign in with Google as EGDesk users. Their Drive/Sheets stay on their
+              account — this does not overwrite owner MCP credentials.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1539,7 +1539,7 @@ export default function DrivePlayground() {
       currentHref="/drive-mcp"
       eyebrow="EGDesk Drive MCP"
       title="Drive Playground"
-      subtitle="Owner: Connect EGDesk → Init a folder → Start listening. Visitors: Sign in with Google on this site to use their own Drive/Sheets."
+      subtitle="Connect EGDesk (owner MCP) → Init a folder → Start listening → upload a file."
       apiPath="/api/drive"
       tools={TOOLS}
       categories={CATEGORIES}
