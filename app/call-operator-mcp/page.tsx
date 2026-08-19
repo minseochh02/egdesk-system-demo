@@ -87,17 +87,51 @@ const TOOLS: PlaygroundToolDef[] = [
       },
     ],
   },
+  {
+    name: 'call_operator_debug_preprocess',
+    title: 'Debug preprocess',
+    description:
+      'Export WAV + PCM/mel sha256 + reference log-mel + whisper.cpp transcript for Mac vs Windows diff. Bundle lands in EGDesk userData/call-operator/debug/.',
+    category: 'debug',
+    helperName: 'debugCallOperatorPreprocess',
+    fields: [
+      {
+        name: 'file_path',
+        label: 'Audio file',
+        type: 'file',
+        accept: AUDIO_ACCEPT,
+        required: true,
+        placeholder: '/Users/you/Downloads/call.wav',
+        hint: 'Same file on Mac and Windows — compare manifest wavSha256, pcmSha256, mel.sha256.',
+      },
+      {
+        name: 'language',
+        label: 'Language',
+        type: 'string',
+        defaultValue: 'ko',
+      },
+      {
+        name: 'run_whisper',
+        label: 'Run whisper.cpp',
+        type: 'boolean',
+        defaultValue: true,
+      },
+    ],
+  },
 ];
 
 const CATEGORIES = [
   { key: 'setup', label: 'Setup' },
   { key: 'transcribe', label: 'Transcribe' },
+  { key: 'debug', label: 'Debug' },
 ];
 
 const RUNNING_HINTS: Record<string, string> = {
   call_operator_ensure: 'Installing or locating local models — first run can take several minutes.',
   call_operator_transcribe:
     'Diarizing then transcribing each turn sequentially. A few-minute call can take several minutes. Leave this tab open.',
+  call_operator_debug_preprocess:
+    'Decoding audio, dumping log-mel, optional whisper.cpp pass — opens debug folder when done.',
 };
 
 function formatSec(sec: number | undefined): string {
@@ -252,6 +286,40 @@ export default function CallOperatorPlayground() {
             </>
           )}
         </dl>
+      );
+    }
+
+    if (tool === 'call_operator_debug_preprocess' || data?.howToDiff) {
+      return (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <dl style={kvGridStyle}>
+            <dt style={kvTermStyle}>Output</dt>
+            <dd style={kvDescStyle}><code style={inlineCodeStyle}>{data.outputDir || '—'}</code></dd>
+            <dt style={kvTermStyle}>Platform</dt>
+            <dd style={kvDescStyle}>{data.platform} ({data.arch})</dd>
+            <dt style={kvTermStyle}>Decode</dt>
+            <dd style={kvDescStyle}>{data.decodeSource}</dd>
+            <dt style={kvTermStyle}>wav sha256</dt>
+            <dd style={kvDescStyle}><code style={inlineCodeStyle}>{data.audio?.wavSha256 || '—'}</code></dd>
+            <dt style={kvTermStyle}>pcm sha256</dt>
+            <dd style={kvDescStyle}><code style={inlineCodeStyle}>{data.audio?.pcmSha256 || '—'}</code></dd>
+            <dt style={kvTermStyle}>mel sha256</dt>
+            <dd style={kvDescStyle}><code style={inlineCodeStyle}>{data.mel?.sha256 || '—'}</code></dd>
+            {data.whisper?.transcript && (
+              <>
+                <dt style={kvTermStyle}>Whisper</dt>
+                <dd style={kvDescStyle}>{data.whisper.transcript.slice(0, 200)}{data.whisper.transcript.length > 200 ? '…' : ''}</dd>
+              </>
+            )}
+          </dl>
+          {Array.isArray(data.howToDiff) && (
+            <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
+              {data.howToDiff.map((line: string) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ol>
+          )}
+        </div>
       );
     }
 

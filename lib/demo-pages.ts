@@ -47,7 +47,7 @@ export const DEMO_PAGES: DemoPageLink[] = [
     description: 'Transcribe a local audio file with speaker labels using whisper.cpp + pyannote. Audio stays on this machine.',
     href: '/call-operator-mcp',
     eyebrow: 'Local transcription',
-    items: ['getCallOperatorStatus', 'ensureCallOperator', 'transcribeCallOperator'],
+    items: ['getCallOperatorStatus', 'ensureCallOperator', 'transcribeCallOperator', 'debugCallOperatorPreprocess'],
   },
   {
     title: 'Drive MCP',
