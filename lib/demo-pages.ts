@@ -43,6 +43,13 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['indexPageIndexPdf', 'resumePageIndexDocument', 'getPageIndexStructure'],
   },
   {
+    title: 'Call Operator MCP',
+    description: 'Transcribe a local audio file with speaker labels using whisper.cpp + pyannote. Audio stays on this machine.',
+    href: '/call-operator-mcp',
+    eyebrow: 'Local transcription',
+    items: ['getCallOperatorStatus', 'ensureCallOperator', 'transcribeCallOperator'],
+  },
+  {
     title: 'Drive MCP',
     description: 'Watch or poll Google Drive folder changes, inspect sync status, and list file events.',
     href: '/drive-mcp',
