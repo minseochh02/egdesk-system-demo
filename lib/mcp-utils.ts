@@ -3,6 +3,9 @@ export function parseMcpResult(raw: any): any {
   if (raw?.success === false) {
     throw new Error(raw.error || 'Request failed');
   }
+  if (raw?.status === 'error') {
+    throw new Error(raw.message || raw.error || 'Request failed');
+  }
 
   const mcpPayload = raw?.result ?? raw;
 

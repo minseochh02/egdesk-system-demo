@@ -51,10 +51,31 @@ export const DEMO_PAGES: DemoPageLink[] = [
   },
   {
     title: 'Drive MCP',
-    description: 'Watch or poll Google Drive folder changes, inspect sync status, and list file events.',
+    description: 'Watch or poll Google Drive folder changes, download to local, and upload files back to Drive.',
     href: '/drive-mcp',
     eyebrow: 'Drive sync',
-    items: ['startDriveAuthLogin', 'getDriveAuthStatus', 'initDriveSync', 'startDrivePollLoop'],
+    items: ['startDrivePollLoop', 'uploadDriveFile', 'syncDrive'],
+  },
+  {
+    title: 'Sheets sync',
+    description: 'List My DB ↔ Sheet connections and sync either direction (toWorkspace, toLocal, or both).',
+    href: '/sheets-mcp',
+    eyebrow: 'Sheets sync',
+    items: ['listSheetSyncConnections', 'syncSheets'],
+  },
+  {
+    title: 'Gmail MCP',
+    description: 'Fetch domain Gmail messages and send from the signed-in Google Workspace account.',
+    href: '/gmail-mcp',
+    eyebrow: 'Gmail',
+    items: ['getGmailUserMessages', 'sendGmailMessage'],
+  },
+  {
+    title: 'Apps Script MCP',
+    description: 'Push local Apps Script files to Google or pull the cloud project into local storage.',
+    href: '/apps-script-mcp',
+    eyebrow: 'Apps Script',
+    items: ['pushAppsScriptToGoogle', 'pullAppsScriptFromGoogle', 'syncAppsScript'],
   },
   {
     title: 'Knowledge Wiki MCP',

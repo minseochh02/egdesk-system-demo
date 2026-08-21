@@ -19,7 +19,7 @@ export default function Home() {
         <h1 style={titleStyle}>Choose a demo page</h1>
         <p style={introStyle}>
           This workspace shows the generated EGDesk integration surface: database helpers, UserData cron jobs, PageIndex,
-          Call Operator transcription, Gemini key config, Korean law, SEO, local agent AI, FinanceHub, internal knowledge, browser recording, SSL,
+          Call Operator transcription, Google Workspace bidirectional sync (Sheets, Drive, Gmail, Apps Script), Gemini key config, Korean law, SEO, local agent AI, FinanceHub, internal knowledge, browser recording, SSL,
           inventory scanner setup, BI product catalog (photos required for SNS schedules), blog / Instagram / YouTube schedule + publish, Naver article stats, Kakao MCP helpers, Phone / Google Messages SMS tools, and Brand Face / spokesperson generation.
         </p>
       </section>

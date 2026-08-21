@@ -7,6 +7,10 @@ A minimal Next.js app showing how EGDesk database integration works end-to-end.
 | File | What it shows |
 |---|---|
 | `app/page.tsx` | Client page that fetches & displays EGDesk table data |
+| `app/drive-mcp/page.tsx` | Drive poll/download and upload (local ↔ Workspace) |
+| `app/sheets-mcp/page.tsx` | My DB ↔ Google Sheets HTTP sync (`toWorkspace` / `toLocal`) |
+| `app/gmail-mcp/page.tsx` | Gmail fetch + send |
+| `app/apps-script-mcp/page.tsx` | Apps Script push / pull |
 | `app/api/data/route.ts` | Server route using `queryTable` from egdesk-helpers |
 | `app/api/create-row/route.ts` | Server route using `insertRow` from egdesk-helpers |
 

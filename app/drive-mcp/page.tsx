@@ -150,8 +150,8 @@ const TOOLS: PlaygroundToolDef[] = [
   },
   {
     name: 'drive_poll',
-    title: 'Poll once',
-    description: 'One-shot changes.list. The Live feed also polls while listening.',
+    title: 'Poll once (Workspace → local)',
+    description: 'One-shot changes.list and optional download. The Live feed also polls while listening.',
     category: 'live',
     helperName: 'pollDriveChanges',
     fields: [
@@ -160,6 +160,66 @@ const TOOLS: PlaygroundToolDef[] = [
         label: 'Download matching files',
         type: 'boolean',
         defaultValue: true,
+      },
+    ],
+  },
+  {
+    name: 'drive_upload',
+    title: 'Upload file (local → Workspace)',
+    description: 'Upload a local file into a watched Drive folder. Opposite of Poll once / Start listening downloads.',
+    category: 'live',
+    helperName: 'uploadDriveFile',
+    fields: [
+      {
+        name: 'filePath',
+        label: 'Local file',
+        type: 'file',
+        required: true,
+        hint: 'Uploads via File System MCP, then Drive MCP puts it in a watched folder. Defaults to the first watched folder.',
+      },
+      {
+        name: 'folderId',
+        label: 'Folder ID (optional)',
+        type: 'string',
+        placeholder: 'Watched folder ID',
+      },
+      {
+        name: 'destName',
+        label: 'Drive file name (optional)',
+        type: 'string',
+        placeholder: 'Leave empty to use the local basename',
+      },
+    ],
+  },
+  {
+    name: 'drive_sync',
+    title: 'HTTP sync',
+    description:
+      'POST /drive/sync. toLocal downloads Drive changes; toWorkspace uploads filePath; both does download then upload.',
+    category: 'live',
+    helperName: 'syncDrive',
+    fields: [
+      {
+        name: 'direction',
+        label: 'Direction',
+        type: 'select',
+        options: ['toLocal', 'toWorkspace', 'both'],
+        defaultValue: 'toLocal',
+      },
+      {
+        name: 'filePath',
+        label: 'Local file (required for toWorkspace / both)',
+        type: 'file',
+      },
+      {
+        name: 'folderId',
+        label: 'Folder ID (optional)',
+        type: 'string',
+      },
+      {
+        name: 'destName',
+        label: 'Drive file name (optional)',
+        type: 'string',
       },
     ],
   },
@@ -254,6 +314,8 @@ const RUNNING_HINTS: Record<string, string> = {
   drive_init: 'Saving folders and change cursor…',
   drive_watch: 'Registering Google Drive watch channel…',
   drive_poll: 'Listing and processing Drive changes…',
+  drive_upload: 'Uploading local file to Drive…',
+  drive_sync: 'Running Drive HTTP sync…',
   drive_start_poll_loop: 'Starting continuous poll loop…',
   drive_list_events: 'Loading file events…',
   drive_list_watched_folders: 'Resolving folder names…',
@@ -1539,7 +1601,7 @@ export default function DrivePlayground() {
       currentHref="/drive-mcp"
       eyebrow="EGDesk Drive MCP"
       title="Drive Playground"
-      subtitle="Connect EGDesk (owner MCP) → Init a folder → Start listening → upload a file."
+      subtitle="Connect EGDesk (owner MCP) → Init a folder → Start listening to download, or Upload file to push local → Drive."
       apiPath="/api/drive"
       tools={TOOLS}
       categories={CATEGORIES}
