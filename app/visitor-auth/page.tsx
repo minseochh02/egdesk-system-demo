@@ -395,9 +395,14 @@ export default function VisitorAuthDemoPage() {
           <li>EGDesk HTTP server running with visitor auth enabled.</li>
           <li>
             Local hosted coding returns through{' '}
-            <code style={codeStyle}>http://localhost:54321/auth/callback</code> (already allowlisted), then
-            back to this site. Published sites still use{' '}
-            <code style={codeStyle}>{'{EGDesk public URL}'}/visitor-auth/callback</code>.
+            <code style={codeStyle}>http://localhost:54321/auth/callback</code>, then back to this origin.
+            The public tunnel uses{' '}
+            <code style={codeStyle}>
+              https://tunneling-service.onrender.com/t/{'{id}'}/visitor-auth/callback
+            </code>{' '}
+            (allowlist that URL or <code style={codeStyle}>https://tunneling-service.onrender.com/**</code>
+            ) and then returns to{' '}
+            <code style={codeStyle}>/t/{'{id}'}/p/{'{project}'}/auth/callback</code>.
           </li>
           <li>
             This demo uses <code style={codeStyle}>app/auth/callback/page.tsx</code> to exchange the one-time code.
