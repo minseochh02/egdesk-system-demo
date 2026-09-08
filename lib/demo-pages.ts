@@ -50,6 +50,14 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['getVoiceTranscriptStatus', 'ensureVoiceTranscript', 'transcribeVoiceTranscript'],
   },
   {
+    title: 'Visitor Google Auth',
+    description:
+      'Test brokered hosted-site login: EGDesk completes Google OAuth and returns an opaque session id plus email/userId to this site.',
+    href: '/visitor-auth',
+    eyebrow: 'Hosted coding auth',
+    items: ['startVisitorGoogleLogin', 'exchangeVisitorAuthCode', 'getVisitorGoogleStatus'],
+  },
+  {
     title: 'Drive MCP',
     description: 'Watch or poll Google Drive folder changes, download to local, and upload files back to Drive.',
     href: '/drive-mcp',
