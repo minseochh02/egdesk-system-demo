@@ -238,8 +238,8 @@ export default function VisitorAuthDemoPage() {
         <h1 style={titleStyle}>Visitor Google login test</h1>
         <p style={introStyle}>
           This page exercises the brokered login flow: the hosted Next.js site never receives Supabase keys.
-          EGDesk completes Google OAuth, creates an EGDesk Auth user, and sends back an opaque session id plus
-          user info for this site origin only.
+          Google bounces through EGDesk&apos;s local callback, then this page gets an opaque session id plus
+          user info for <strong>this localhost origin</strong> — not egdesk.cloud.
         </p>
         <nav style={navStyle} aria-label="Demo navigation">
           {navLinks.map((link) => (
@@ -394,7 +394,9 @@ export default function VisitorAuthDemoPage() {
         <ul style={listStyle}>
           <li>EGDesk HTTP server running with visitor auth enabled.</li>
           <li>
-            Supabase redirect allowlist includes{' '}
+            Local hosted coding returns through{' '}
+            <code style={codeStyle}>http://localhost:54321/auth/callback</code> (already allowlisted), then
+            back to this site. Published sites still use{' '}
             <code style={codeStyle}>{'{EGDesk public URL}'}/visitor-auth/callback</code>.
           </li>
           <li>

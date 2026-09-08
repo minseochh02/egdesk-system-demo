@@ -92,6 +92,8 @@ export async function startVisitorGoogleLogin(options: {
     options.next && options.next.startsWith('/') ? options.next : window.location.pathname;
   const returnTo = new URL('/auth/callback', window.location.origin);
   returnTo.searchParams.set('next', next);
+  // EGDesk picks the OAuth bounce: localhost hosted coding uses
+  // http://localhost:54321/auth/callback so Supabase does not fall back to egdesk.cloud.
   const egdeskPublicUrl =
     process.env.NEXT_PUBLIC_EGDESK_API_URL || 'http://localhost:8080';
 
