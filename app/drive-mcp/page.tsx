@@ -13,6 +13,7 @@ import {
   listVisitorDriveFiles,
   signOutVisitorGoogle,
   startVisitorGoogleLogin,
+  VISITOR_WORKSPACE_SCOPES,
 } from '@/egdesk-visitor-google';
 
 const FOLDER_TOOLS = new Set(['drive_init', 'drive_set_target_folders']);
@@ -728,7 +729,7 @@ export default function DrivePlayground() {
     setVisitorBusy(true);
     setVisitorError(null);
     try {
-      await startVisitorGoogleLogin({ next: '/drive-mcp' });
+      await startVisitorGoogleLogin({ next: '/drive-mcp', scopes: VISITOR_WORKSPACE_SCOPES });
     } catch (err: any) {
       setVisitorError(err?.message || String(err));
       setVisitorBusy(false);

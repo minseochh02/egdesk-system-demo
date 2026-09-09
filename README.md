@@ -24,8 +24,11 @@ These files are created/updated automatically by EGDesk when you import data or 
 | `proxy.ts` | Intercepts every fetch and routes to the correct EGDesk database |
 | `egdesk.config.ts` | Type-safe table definitions (`TABLES`, `TABLE_NAMES`) |
 | `egdesk-helpers.ts` | Helper functions (`queryTable`, `insertRow`, `updateRow`, `deleteRow`) |
+| `egdesk-visitor-google.ts` | Visitor Google helper (generated — do not edit) |
 | `.env.development.local` | Dev EGDesk server URL + project ID |
 | `.env.production.local` | Prod EGDesk server URL + project ID |
+
+Site-owned (never overwritten): `egdesk.visitor-auth.ts` — default visitor Google scopes (`basic` or `workspace`). Login UI lives in your pages.
 
 ## Getting started with EGDesk
 

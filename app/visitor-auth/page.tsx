@@ -11,6 +11,8 @@ import {
   listVisitorDriveFiles,
   signOutVisitorGoogle,
   startVisitorGoogleLogin,
+  VISITOR_BASIC_SCOPES,
+  VISITOR_WORKSPACE_SCOPES,
 } from '@/egdesk-visitor-google';
 
 type VisitorStatus = {
@@ -148,12 +150,12 @@ export default function VisitorAuthDemoPage() {
     void refreshStatus();
   }, [patchStep, readLocalSession, refreshStatus, siteOrigin]);
 
-  const handleSignIn = useCallback(async () => {
+  const handleSignIn = useCallback(async (scopes: typeof VISITOR_BASIC_SCOPES | typeof VISITOR_WORKSPACE_SCOPES) => {
     setBusy(true);
     setError(null);
     patchStep('start', { state: 'running', detail: 'Redirecting to Google via EGDesk…' });
     try {
-      await startVisitorGoogleLogin({ next: '/visitor-auth' });
+      await startVisitorGoogleLogin({ next: '/visitor-auth', scopes });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -265,8 +267,21 @@ export default function VisitorAuthDemoPage() {
             </div>
           </div>
           <div style={buttonRowStyle}>
-            <button type="button" onClick={() => void handleSignIn()} disabled={busy} style={primaryBtnStyle}>
-              {busy ? 'Working…' : status?.connected ? 'Re-sign in' : 'Sign in with Google'}
+            <button
+              type="button"
+              onClick={() => void handleSignIn(VISITOR_BASIC_SCOPES)}
+              disabled={busy}
+              style={secondaryBtnStyle}
+            >
+              Sign in (email only)
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSignIn(VISITOR_WORKSPACE_SCOPES)}
+              disabled={busy}
+              style={primaryBtnStyle}
+            >
+              {busy ? 'Working…' : status?.connected ? 'Re-sign in (Drive/Sheets)' : 'Sign in with Google'}
             </button>
             <button type="button" onClick={() => void refreshStatus()} disabled={busy} style={secondaryBtnStyle}>
               Refresh status
