@@ -74,8 +74,8 @@ const TOOLS: PlaygroundToolDef[] = [
         name: 'forceConsent',
         label: 'Force consent',
         type: 'boolean',
-        defaultValue: true,
-        hint: 'Ask Google for consent again (needed for Drive scope / refresh token).',
+        defaultValue: false,
+        hint: 'Leave off unless you need to re-grant scopes or a refresh token.',
       },
     ],
   },
@@ -678,7 +678,7 @@ export default function DrivePlayground() {
     try {
       const started = await callDriveTool('drive_auth_login', {
         openWindow: false,
-        forceConsent: true,
+        forceConsent: false,
       });
       if (started?.status === 'already_connected') {
         setAuthInfo(started.auth || (await refreshAuthStatus()));
@@ -728,7 +728,7 @@ export default function DrivePlayground() {
     setVisitorBusy(true);
     setVisitorError(null);
     try {
-      await startVisitorGoogleLogin({ next: '/drive-mcp', forceConsent: true });
+      await startVisitorGoogleLogin({ next: '/drive-mcp' });
     } catch (err: any) {
       setVisitorError(err?.message || String(err));
       setVisitorBusy(false);

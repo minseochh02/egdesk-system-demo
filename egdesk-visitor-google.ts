@@ -136,7 +136,7 @@ export async function startVisitorGoogleLogin(options: {
   const result = await callVisitorAuth('start', {
     returnTo: returnTo.toString(),
     egdeskPublicUrl,
-    forceConsent: options.forceConsent !== false,
+    forceConsent: options.forceConsent === true,
   });
   if (!result?.authUrl) {
     throw new Error(result?.error || 'Failed to start visitor Google login');

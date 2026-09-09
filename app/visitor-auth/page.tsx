@@ -153,7 +153,7 @@ export default function VisitorAuthDemoPage() {
     setError(null);
     patchStep('start', { state: 'running', detail: 'Redirecting to Google via EGDesk…' });
     try {
-      await startVisitorGoogleLogin({ next: '/visitor-auth', forceConsent: true });
+      await startVisitorGoogleLogin({ next: '/visitor-auth' });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
