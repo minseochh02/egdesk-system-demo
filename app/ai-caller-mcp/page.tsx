@@ -384,8 +384,8 @@ export default function AiCallerPlayground() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            tool: 'egdesk_list_gemini_keys',
-            arguments: {},
+            tool: 'egdesk_list_api_keys',
+            arguments: { provider: 'google' },
           }),
         }).then(async (res) => parseMcpResult(await res.json())),
       ]);

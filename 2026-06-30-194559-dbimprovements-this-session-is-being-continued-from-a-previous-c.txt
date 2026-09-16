@@ -1,0 +1,1510 @@
+╭─── Claude Code v2.1.104 ─────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│                Welcome back Minsoo!                │ started                 │
+│                                                    │ Run /init to create a … │
+│                       ▐▛███▜▌                      │ ─────────────────────── │
+│                      ▝▜█████▛▘                     │ Recent activity         │
+│                        ▘▘ ▝▝                       │ No recent activity      │
+│        Opus 4.6 (1M context) · Claude Max ·        │                         │
+│        m8chaa@gmail.com's Organization             │                         │
+│    ~/…/Taesung/EGDesk-scratch/egdesk-system-demo   │                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Referenced file app/database/page.tsx
+  ⎿  Referenced file app/pubsub/page.tsx
+  ⎿  Read lib/demo-pages.ts (112 lines)
+  ⎿  Referenced file 
+     ../egdesk-scratch/packages/next-api-plugin/src/generate-helpers.ts
+  ⎿  Referenced file ../egdesk-scratch/apps/egdesk/src/main/mcp/server-creator/l
+     ocal-server-manager.ts
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now I can see the full file. The pub/sub state and logic are added, but the
+  render section still shows only the original playground content — no tab bar
+  and no real-time tab content. Let me add the tab bar and the real-time tab
+  with the desktop/mobile split-screen UI.
+
+⏺ Update(app/database/page.tsx)
+  ⎿  Added 17 lines
+      511          </p>
+      512        </header>
+      513  
+      514 +      {/* ── Tab bar ─────────────────────────────────────────
+          +───────── */}                                                 
+      515 +      <div style={tabBarStyle}>                               
+      516 +        <button                                               
+      517 +          onClick={() => setActiveTab('playground')}          
+      518 +          style={{ ...tabBtnStyle, ...(activeTab === 'playgrou
+          +nd' ? tabBtnActiveStyle : {}) }}                              
+      519 +        >                                                     
+      520 +          Query Playground                                    
+      521 +        </button>                                             
+      522 +        <button                                               
+      523 +          onClick={() => setActiveTab('realtime')}            
+      524 +          style={{ ...tabBtnStyle, ...(activeTab === 'realtime
+          +' ? tabBtnActiveStyle : {}) }}                                
+      525 +        >                                                     
+      526 +          Real-Time Events                                    
+      527 +        </button>                                             
+      528 +      </div>                                                  
+      529 +                                                              
+      530 +      {activeTab === 'playground' && (<>                      
+      531        <div style={sessionBarStyle}>
+      532          <div style={{ flex: 1, minWidth: 200 }}>
+      533            <div style={miniLabelStyle}>Configured tables</div>
+
+⏺ Now close the playground tab section and add the real-time tab content:
+
+⏺ Update(app/database/page.tsx)
+  ⎿  Added 128 lines
+      774            )}
+      775          </div>
+      776        </div>
+      777 +      </>)}                                                   
+      778 +                                                              
+      779 +      {/* ── Real-Time Events tab ────────────────────────────
+          +────────── */}                                                
+      780 +      {activeTab === 'realtime' && (                          
+      781 +        <div style={{ display: 'grid', gap: 20 }}>            
+      782 +          {/* SSE connection bar */}                          
+      783 +          <div style={sessionBarStyle}>                       
+      784 +            <div style={{ flex: 1 }}>                         
+      785 +              <div style={miniLabelStyle}>SSE connection</div>
+      786 +              <p style={{ fontSize: 14, fontWeight: 600, color
+          +: sseConnected ? '#047857' : '#6b7280', margin: '4px 0 0' }}> 
+      787 +                {sseConnected ? 'Connected — listening for eve
+          +nts' : 'Disconnected'}                                        
+      788 +              </p>                                            
+      789 +            </div>                                            
+      790 +            <div style={{ display: 'flex', gap: 8 }}>         
+      791 +              {!sseConnected ? (                              
+      792 +                <button onClick={connectSSE} style={runBtnStyl
+          +e}>Connect</button>                                           
+      793 +              ) : (                                           
+      794 +                <button onClick={disconnectSSE} style={seconda
+          +ryBtnStyle}>Disconnect</button>                               
+      795 +              )}                                              
+      796 +            </div>                                            
+      797 +          </div>                                              
+      798 +                                                              
+      799 +          {/* Split-screen: Desktop + Mobile */}              
+      800 +          <div style={splitScreenStyle}>                      
+      801 +            {/* Desktop frame — order form */}                
+      802 +            <div style={desktopFrameStyle}>                   
+      803 +              <div style={desktopTitleBarStyle}>              
+      804 +                <span style={desktopDotStyle('#ef4444')} />   
+      805 +                <span style={desktopDotStyle('#f59e0b')} />   
+      806 +                <span style={desktopDotStyle('#22c55e')} />   
+      807 +                <span style={{ marginLeft: 10, fontSize: 12, c
+          +olor: '#6b7280', fontWeight: 600 }}>EGDesk — Orders</span>    
+      808 +              </div>                                          
+      809 +              <div style={{ padding: 20 }}>                   
+      810 +                <h3 style={{ fontSize: 15, fontWeight: 700, co
+          +lor: '#111827', margin: '0 0 14px' }}>New Order</h3>          
+      811 +                <div style={{ display: 'grid', gap: 10 }}>    
+      812 +                  <div>                                       
+      813 +                    <label style={labelStyle}>Customer name *<
+          +/label>                                                       
+      814 +                    <input                                    
+      815 +                      type="text"                             
+      816 +                      value={orderName}                       
+      817 +                      onChange={e => setOrderName(e.target.val
+          +ue)}                                                          
+      818 +                      placeholder="Kim Minseo"                
+      819 +                      style={inputStyle}                      
+      820 +                    />                                        
+      821 +                  </div>                                      
+      822 +                  <div>                                       
+      823 +                    <label style={labelStyle}>Amount</label>  
+      824 +                    <input                                    
+      825 +                      type="text"                             
+      826 +                      value={orderAmount}                     
+      827 +                      onChange={e => setOrderAmount(e.target.v
+          +alue)}                                                        
+      828 +                      placeholder="50000"                     
+      829 +                      style={inputStyle}                      
+      830 +                    />                                        
+      831 +                  </div>                                      
+      832 +                  <div>                                       
+      833 +                    <label style={labelStyle}>Status</label>  
+      834 +                    <select value={orderStatus} onChange={e =>
+          + setOrderStatus(e.target.value)} style={inputStyle}>          
+      835 +                      <option value="pending">Pending</option>
+      836 +                      <option value="confirmed">Confirmed</opt
+          +ion>                                                          
+      837 +                      <option value="shipped">Shipped</option>
+      838 +                    </select>                                 
+      839 +                  </div>                                      
+      840 +                  <button                                     
+      841 +                    onClick={handleSubmitOrder}               
+      842 +                    disabled={orderSubmitting || !orderName.tr
+          +im()}                                                         
+      843 +                    style={{ ...runBtnStyle, marginTop: 4, opa
+          +city: (!orderName.trim() || orderSubmitting) ? 0.5 : 1 }}     
+      844 +                  >                                           
+      845 +                    {orderSubmitting ? 'Saving…' : 'Insert ord
+          +er'}                                                          
+      846 +                  </button>                                   
+      847 +                  {orderMessage && (                          
+      848 +                    <p style={{ fontSize: 13, color: orderMess
+          +age.startsWith('Error') ? '#dc2626' : '#047857', margin: 0 }}>
+      849 +                      {orderMessage}                          
+      850 +                    </p>                                      
+      851 +                  )}                                          
+      852 +                </div>                                        
+      853 +              </div>                                          
+      854 +            </div>                                            
+      855 +                                                              
+      856 +            {/* Arrow */}                                     
+      857 +            <div style={arrowStyle}>                          
+      858 +              <svg width="40" height="40" viewBox="0 0 40 40" 
+          +fill="none">                                                  
+      859 +                <path d="M8 20H32M32 20L24 12M32 20L24 28" str
+          +oke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLine
+          +join="round" />                                               
+      860 +              </svg>                                          
+      861 +              <span style={{ fontSize: 11, color: '#9ca3af', f
+          +ontWeight: 600 }}>SSE push</span>                             
+      862 +            </div>                                            
+      863 +                                                              
+      864 +            {/* Phone frame — notifications */}               
+      865 +            <div style={phoneFrameStyle}>                     
+      866 +              <div style={phoneNotchStyle} />                 
+      867 +              <div style={phoneStatusBarStyle}>               
+      868 +                <span style={{ fontSize: 11, fontWeight: 600 }
+          +}>9:41</span>                                                 
+      869 +                <span style={{ fontSize: 11 }}>EGDesk</span>  
+      870 +              </div>                                          
+      871 +              <div style={phoneContentStyle}>                 
+      872 +                {notifications.length === 0 ? (               
+      873 +                  <div style={{ textAlign: 'center', color: '#
+          +9ca3af', fontSize: 13, padding: '40px 16px' }}>               
+      874 +                    {sseConnected ? 'Waiting for events…' : 'C
+          +onnect SSE to see push notifications'}                        
+      875 +                  </div>                                      
+      876 +                ) : (                                         
+      877 +                  <div style={{ display: 'grid', gap: 8 }}>   
+      878 +                    {notifications.map(n => (                 
+      879 +                      <div key={n.id} style={notifCardStyle}> 
+      880 +                        <div style={{ display: 'flex', justify
+          +Content: 'space-between', alignItems: 'center' }}>            
+      881 +                          <span style={{ fontSize: 12, fontWei
+          +ght: 700, color: '#111827' }}>{n.title}</span>                
+      882 +                          <span style={{ fontSize: 10, color: 
+          +'#9ca3af' }}>{n.time}</span>                                  
+      883 +                        </div>                                
+      884 +                        <p style={{ fontSize: 11, color: '#6b7
+          +280', margin: '3px 0 0' }}>{n.body}</p>                       
+      885 +                      </div>                                  
+      886 +                    ))}                                       
+      887 +                  </div>                                      
+      888 +                )}                                            
+      889 +              </div>                                          
+      890 +            </div>                                            
+      891 +          </div>                                              
+      892 +                                                              
+      893 +          {/* Info panel */}                                  
+      894 +          <div style={infoPanelStyle}>                        
+      895 +            <strong style={{ fontSize: 13, color: '#1e40af' }}
+          +>How real-time events work</strong>                           
+      896 +            <ol style={{ margin: '8px 0 0', paddingLeft: 18, f
+          +ontSize: 13, color: '#1e40af', lineHeight: 1.65 }}>           
+      897 +              <li>Insert an order using the form above (or the
+          + Query Playground tab)</li>                                   
+      898 +              <li>EGDesk broadcasts <code style={inlineCodeSty
+          +le}>egdesk/user-data-changed</code> via SSE</li>              
+      899 +              <li>The phone receives a push-style notification
+          + in real time</li>                                            
+      900 +              <li>In production, use <code style={inlineCodeSt
+          +yle}>onUserDataChanged()</code> from egdesk-helpers</li>      
+      901 +            </ol>                                             
+      902 +          </div>                                              
+      903 +        </div>                                                
+      904 +      )}                                                      
+      905      </main>
+      906    );
+      907  }
+
+⏺ Now add the styles for the new tab bar, split-screen, desktop frame, phone
+  frame, and notifications:
+
+⏺ Update(app/database/page.tsx)
+  ⎿  Added 110 lines
+      1396    borderBottom: '1px solid #f3f4f6',
+      1397    color: '#111827',
+      1398  };
+      1399 +                                                             
+      1400 +// ── Tab bar styles ────────────────────────────────────────
+           +──────────────────                                           
+      1401 +                                                             
+      1402 +const tabBarStyle: React.CSSProperties = {                   
+      1403 +  display: 'flex',                                           
+      1404 +  gap: 0,                                                    
+      1405 +  marginBottom: 20,                                          
+      1406 +  borderBottom: '2px solid #e5e7eb',                         
+      1407 +};                                                           
+      1408 +                                                             
+      1409 +const tabBtnStyle: React.CSSProperties = {                   
+      1410 +  padding: '10px 20px',                                      
+      1411 +  fontSize: 14,                                              
+      1412 +  fontWeight: 600,                                           
+      1413 +  color: '#6b7280',                                          
+      1414 +  background: 'transparent',                                 
+      1415 +  border: 'none',                                            
+      1416 +  borderBottom: '2px solid transparent',                     
+      1417 +  marginBottom: -2,                                          
+      1418 +  cursor: 'pointer',                                         
+      1419 +};                                                           
+      1420 +                                                             
+      1421 +const tabBtnActiveStyle: React.CSSProperties = {             
+      1422 +  color: '#047857',                                          
+      1423 +  borderBottomColor: '#047857',                              
+      1424 +};                                                           
+      1425 +                                                             
+      1426 +// ── Real-time tab styles ──────────────────────────────────
+           +──────────────────                                           
+      1427 +                                                             
+      1428 +const splitScreenStyle: React.CSSProperties = {              
+      1429 +  display: 'flex',                                           
+      1430 +  alignItems: 'center',                                      
+      1431 +  justifyContent: 'center',                                  
+      1432 +  gap: 24,                                                   
+      1433 +  flexWrap: 'wrap',                                          
+      1434 +};                                                           
+      1435 +                                                             
+      1436 +const desktopFrameStyle: React.CSSProperties = {             
+      1437 +  width: 360,                                                
+      1438 +  background: '#fff',                                        
+      1439 +  border: '1px solid #d1d5db',                               
+      1440 +  borderRadius: 10,                                          
+      1441 +  overflow: 'hidden',                                        
+      1442 +  boxShadow: '0 4px 12px rgba(0,0,0,0.06)',                  
+      1443 +};                                                           
+      1444 +                                                             
+      1445 +const desktopTitleBarStyle: React.CSSProperties = {          
+      1446 +  display: 'flex',                                           
+      1447 +  alignItems: 'center',                                      
+      1448 +  gap: 6,                                                    
+      1449 +  padding: '10px 14px',                                      
+      1450 +  background: '#f3f4f6',                                     
+      1451 +  borderBottom: '1px solid #e5e7eb',                         
+      1452 +};                                                           
+      1453 +                                                             
+      1454 +const desktopDotStyle = (color: string): React.CSSProperties 
+           +=> ({                                                        
+      1455 +  width: 10,                                                 
+      1456 +  height: 10,                                                
+      1457 +  borderRadius: '50%',                                       
+      1458 +  background: color,                                         
+      1459 +});                                                          
+      1460 +                                                             
+      1461 +const arrowStyle: React.CSSProperties = {                    
+      1462 +  display: 'flex',                                           
+      1463 +  flexDirection: 'column',                                   
+      1464 +  alignItems: 'center',                                      
+      1465 +  gap: 4,                                                    
+      1466 +};                                                           
+      1467 +                                                             
+      1468 +const phoneFrameStyle: React.CSSProperties = {               
+      1469 +  width: 280,                                                
+      1470 +  height: 500,                                               
+      1471 +  background: '#fff',                                        
+      1472 +  border: '3px solid #1f2937',                               
+      1473 +  borderRadius: 32,                                          
+      1474 +  overflow: 'hidden',                                        
+      1475 +  display: 'flex',                                           
+      1476 +  flexDirection: 'column',                                   
+      1477 +  boxShadow: '0 8px 24px rgba(0,0,0,0.1)',                   
+      1478 +};                                                           
+      1479 +                                                             
+      1480 +const phoneNotchStyle: React.CSSProperties = {               
+      1481 +  width: 100,                                                
+      1482 +  height: 6,                                                 
+      1483 +  background: '#1f2937',                                     
+      1484 +  borderRadius: 3,                                           
+      1485 +  margin: '8px auto 0',                                      
+      1486 +};                                                           
+      1487 +                                                             
+      1488 +const phoneStatusBarStyle: React.CSSProperties = {           
+      1489 +  display: 'flex',                                           
+      1490 +  justifyContent: 'space-between',                           
+      1491 +  padding: '8px 20px 6px',                                   
+      1492 +  fontSize: 11,                                              
+      1493 +  fontWeight: 600,                                           
+      1494 +  color: '#374151',                                          
+      1495 +};                                                           
+      1496 +                                                             
+      1497 +const phoneContentStyle: React.CSSProperties = {             
+      1498 +  flex: 1,                                                   
+      1499 +  overflowY: 'auto',                                         
+      1500 +  padding: '8px 12px',                                       
+      1501 +};                                                           
+      1502 +                                                             
+      1503 +const notifCardStyle: React.CSSProperties = {                
+      1504 +  background: '#f9fafb',                                     
+      1505 +  border: '1px solid #e5e7eb',                               
+      1506 +  borderRadius: 10,                                          
+      1507 +  padding: '10px 12px',                                      
+      1508 +};                                                           
+
+⏺ Now let me verify the file compiles by checking for any syntax issues around
+  the tab wrapping:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Let me check the closing of the playground tab section:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Good, the structure looks correct. Let me verify the app builds:
+
+⏺ Bash(npx next build 2>&1 | tail -30)
+  ⎿  npm warn exec The following package was not found and will be installe
+     d: next@16.2.9
+     ▲ Next.js 16.2.9 (Turbopack)
+     … +19 lines (ctrl+o to expand)
+  ⎿  (timeout 1m)
+
+⏺ Bash(npx next build 2>&1 | tail -20)
+  ⎿  ▲ Next.js 16.2.9 (Turbopack)
+
+       Creating an optimized production build ...
+     … +17 lines (ctrl+o to expand)
+
+⏺ The build error is a Next.js workspace root issue unrelated to my changes. Let
+   me try running the TypeScript check instead from the demo project directory:
+
+⏺ Bash(npx tsc --noEmit 2>&1 | head -30)
+  ⎿                                                                        
+              
+                     This is not the tsc command you are looking for       
+     … +11 lines (ctrl+o to expand)
+
+⏺ Bash(npx tsc --noEmit 2>&1 | head -30)
+  ⎿                                                                        
+              
+                     This is not the tsc command you are looking for       
+     … +11 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+
+⏺ Bash(npx tsc --noEmit 2>&1 | head -40)
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ {"success":false,"error":"Unauthorized: invalid or missing X-Api-Key"}\       
+  is our egdesk helper wrong?                                                   
+
+⏺ Let me check how the API fetch and proxy route handle authentication.
+
+  Searched for 3 patterns, read 2 files (ctrl+o to expand)
+
+⏺ The handleSubmitOrder in the pub/sub tab uses apiFetch('/__user_data_proxy', 
+  ...) — but there's no /__user_data_proxy route in this demo app. That route
+  would exist in projects that ran npx egdesk-next-setup, but not here.
+
+  Let me check the generated helpers file:
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Now I see the issue. The handleSubmitOrder function in the pub/sub tab calls
+  apiFetch('/__user_data_proxy', ...) directly from the browser, but there's no
+  /__user_data_proxy route in this demo project. The proper way is to use
+  callUserDataTool from egdesk-helpers or route through the existing
+  /api/database endpoint.
+
+  But wait — the error says "Unauthorized: invalid or missing X-Api-Key". This
+  means the request IS reaching EGDesk's API, but without the API key header.
+  The /__user_data_proxy route (if it existed) would inject that header. Since
+  there's no proxy route, the browser fetch is going somewhere that requires
+  auth.
+
+  The fix: use the existing /api/database route (server-side, which already has
+  the egdesk-helpers with proper auth), or import callUserDataTool and call it
+  properly. Since the order submission needs to work from the browser, the
+  simplest fix is to route it through the existing /api/database API route which
+   already calls insertRows server-side with proper credentials.
+
+⏺ Update(app/database/page.tsx)
+  ⎿  Error editing file
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(app/database/page.tsx)
+  ⎿  Added 3 lines, removed 3 lines
+      322      setOrderSubmitting(true);
+      323      setOrderMessage(null);
+      324      try {
+      325 -      const res = await apiFetch('/__user_data_proxy', {      
+      325 +      const res = await apiFetch('/api/database', {           
+      326          method: 'POST',
+      327          headers: { 'Content-Type': 'application/json' },
+      328          body: JSON.stringify({
+      329 -          tool: 'user_data_insert_rows',                      
+      329 +          helper: 'insertRows',                               
+      330            arguments: {
+      331              tableName: 'orders',
+      332              rows: [{ customer_name: orderName.trim(), amount: 
+           orderAmount || '0', status: orderStatus, created_at: new Date(
+           ).toISOString() }],
+     ...
+      334          }),
+      335        });
+      336        const data = await res.json();
+      337 -      if (data?.success || data?.result) {                    
+      337 +      if (data?.success) {                                    
+      338          setOrderMessage('Order saved!');
+      339          setOrderName('');
+      340          setOrderAmount('');
+
+⏺ The issue was that handleSubmitOrder was calling /__user_data_proxy directly
+  from the browser. That proxy route doesn't exist in this demo project, so the
+  request was hitting EGDesk's API without the X-Api-Key header.
+
+  The fix routes it through /api/database instead — the same server-side API
+  route that all the other playground tools use. That route imports insertRows
+  from egdesk-helpers.ts, which calls EGDesk directly with proper auth headers
+  via buildServerEgdeskHeaders().
+
+  Try submitting the order again — it should work now.
+
+✻ Cooked for 1m 1s
+
+❯ thishappened for connect                                                      
+
+⏺ The SSE connection goes directly to EGDesk's API from the browser (new 
+  EventSource(${apiUrl}/user-data/sse)), but EventSource doesn't support custom
+  headers — so there's no way to pass X-Api-Key.
+
+  We need a server-side SSE proxy route. Let me check how EGDesk validates the
+  key on that endpoint and create a proxy.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ So /user-data/sse is a protected route — it requires X-Api-Key header. Since
+  EventSource can't send custom headers, we need either:
+
+  1. Option A: Make the SSE endpoint accept the API key as a query param (change
+   EGDesk server)
+  2. Option B: Create a server-side SSE proxy in the demo app
+
+  Option A is cleaner for the long term — the onUserDataChanged() helper in
+  egdesk-helpers also uses EventSource and would have the same problem. Let me
+  add query-param auth support to the EGDesk server for the SSE route.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ I'll update the API key check to also accept the key as a ?key= query
+  parameter (needed for EventSource which can't send headers):
+
+⏺ Update(~/Desktop/projects/Taesung/EGDesk-scratch/egdesk-scratch/apps/egdesk/sr
+        c/main/mcp/server-creator/local-server-manager.ts)
+  ⎿  Added 3 lines, removed 1 line
+      404            reqPath.startsWith('/kakao/tools') ||
+      405            reqPath.startsWith('/egdesk-config');
+      406          if (this.apiKey && isProtectedRoute) {
+      407 -          if (req.headers['x-api-key'] !== this.apiKey) {     
+      407 +          // Accept API key from header or query param (EventS
+          +ource can't send headers)                                     
+      408 +          const queryKey = new URL(req.url || '/', `http://${r
+          +eq.headers.host || 'localhost'}`).searchParams.get('key');    
+      409 +          if (req.headers['x-api-key'] !== this.apiKey && quer
+          +yKey !== this.apiKey) {                                       
+      410              res.writeHead(401);
+      411              res.end(JSON.stringify({ success: false, error: 'U
+           nauthorized: invalid or missing X-Api-Key' }));
+      412              return;
+
+⏺ Now update the SSE connection in the demo to pass the API key as a query
+  param:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now let me check what config is available for the API key:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ The API key is in NEXT_PUBLIC_EGDESK_API_KEY. Since it's NEXT_PUBLIC_*, it's
+  exposed to the browser. Update the SSE connection:
+
+⏺ Update(app/database/page.tsx)
+  ⎿  Added 3 lines, removed 1 line
+      283    const connectSSE = useCallback(() => {
+      284      if (eventSourceRef.current) eventSourceRef.current.close()
+           ;
+      285      const apiUrl = process.env.NEXT_PUBLIC_EGDESK_API_URL || '
+           http://localhost:8080';
+      286 -    const es = new EventSource(`${apiUrl}/user-data/sse`);    
+      286 +    const apiKey = process.env.NEXT_PUBLIC_EGDESK_API_KEY || '
+          +';                                                            
+      287 +    const sseUrl = apiKey ? `${apiUrl}/user-data/sse?key=${enc
+          +odeURIComponent(apiKey)}` : `${apiUrl}/user-data/sse`;        
+      288 +    const es = new EventSource(sseUrl);                       
+      289      eventSourceRef.current = es;
+      290  
+      291      es.addEventListener('message', (e: MessageEvent) => {
+
+⏺ Now also fix the onUserDataChanged() helper in generate-helpers.ts — it has
+  the same problem (uses EventSource without auth):
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Update(~/Desktop/projects/Taesung/EGDesk-scratch/egdesk-scratch/packages/next-
+        api-plugin/src/generate-helpers.ts)
+  ⎿  Added 3 lines, removed 1 line
+      523    }
+      524  
+      525    const apiUrl = EGDESK_CONFIG.apiUrl || '';
+      526 -  const es = new EventSource(\`\${apiUrl}/user-data/sse\`);   
+      526 +  const apiKey = EGDESK_CONFIG.apiKey || '';                  
+      527 +  const sseUrl = apiKey ? \`\${apiUrl}/user-data/sse?key=\${en
+          +codeURIComponent(apiKey)}\` : \`\${apiUrl}/user-data/sse\`;   
+      528 +  const es = new EventSource(sseUrl);                         
+      529  
+      530    es.addEventListener('message', (e: MessageEvent) => {
+      531      try {
+
+⏺ Now you need to rebuild EGDesk for the server-side change to take effect. The
+  three changes:
+
+  1. EGDesk server (local-server-manager.ts): API key validation now also
+  accepts ?key= query parameter — needed because EventSource can't send custom
+  headers.
+  2. Demo app (app/database/page.tsx): SSE connection now passes
+  NEXT_PUBLIC_EGDESK_API_KEY as a query param.
+  3. generate-helpers.ts: The onUserDataChanged() helper also passes
+  EGDESK_CONFIG.apiKey as a query param.
+
+  After you rebuild EGDesk, the "Connect" button should work.
+
+✻ Crunched for 1m 25s
+
+❯ i restarted app, and in terminal isee \                                       
+  [1] 📨 Incoming request: GET                                                  
+  /user-data/sse?key=44c9e9ba-d732-42c1-9ad5-d0344ee1705c\                      
+  but i get 404?                                                                
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ The issue is the url parameter passed to handleUserDataEndpoint. It's
+  comparing url === '/user-data/sse' but the url likely still has the query
+  string attached. Let me check how url is passed:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Let me check where url is defined — it's probably req.url with query string:
+
+  Searched for 1 pattern (ctrl+o to expand)
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ {success: false, error: "User Data MCP endpoint not found",…}                 
+  availableEndpoints                                                            
+  :                                                                             
+  ["/user-data/sse - SSE stream for real-time change events", "/user-data/tools 
+   - List available tools",…]                                                   
+  0                                                                             
+  :                                                                             
+  "/user-data/sse - SSE stream for real-time change events"                     
+  1                                                                             
+  :                                                                             
+  "/user-data/tools - List available tools"                                     
+  2                                                                             
+  :                                                                             
+  "/user-data/tools/call - Call a tool"                                         
+  error                                                                         
+  :                                                                             
+  "User Data MCP endpoint not found"                                            
+  success                                                                       
+  :                                                                             
+  false\                                                                        
+  http://localhost:8080/user-data/sse?key=44c9e9ba-d732-42c1-9ad5-d0344ee1705c  
+
+⏺ The url variable includes the query string (/user-data/sse?key=...), so the
+  exact match url === '/user-data/sse' fails. Fix:
+⏺ Update(~/Desktop/projects/Taesung/EGDesk-scratch/egdesk-scratch/apps/egdesk/sr
+        c/main/mcp/server-creator/local-server-manager.ts)
+  ⎿  Added 2 lines, removed 1 line
+      1996      }
+      1997  
+      1998      // SSE stream for real-time user-data change events
+      1999 -    if (url === '/user-data/sse' && req.method === 'GET') {  
+      1999 +    const urlPath = url.split('?')[0];                       
+      2000 +    if (urlPath === '/user-data/sse' && req.method === 'GET')
+           + {                                                           
+      2001        this.handleUserDataSSE(req, res);
+      2002        return;
+      2003      }
+
+⏺ The url still has the query string (/user-data/sse?key=...) when it reaches
+  handleUserDataEndpoint, so the === check never matched. Now it strips the
+  query string before comparing. Rebuild and try again.
+
+❯ perfect! now make the phone ui have a button where they can open this in      
+  separate tab so that it feels more like sse                                   
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now I need to create a separate phone page and add a button on the phone frame
+   to open it in a new tab. Let me first create the standalone phone
+  notification page:
+
+  Listed 1 directory (ctrl+o to expand)
+
+⏺ I'll repurpose the existing app/pubsub/page.tsx as the standalone
+  phone/notification viewer:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Write(app/pubsub/page.tsx)
+  ⎿  Added 107 lines, removed 459 lines
+      1  'use client';
+      2  
+      3  import type React from 'react';
+      4 -import { useState, useEffect, useRef, useCallback } from 'react'
+        -;                                                               
+      5 -import { apiFetch, getEgdeskBasePath } from '@/lib/api';        
+      6 -import { getDemoNavLinks } from '@/lib/demo-pages';             
+      4 +import { useState, useEffect, useRef } from 'react';            
+      5  
+      6  // ── Types ────────────────────────────────────────────────────
+         ───────────────
+      7  
+     ...
+       21    action: string;
+       22  }
+       23  
+       26 -// ── Component ──────────────────────────────────────────────
+          -─────────────────                                             
+       24 +// ── Page ───────────────────────────────────────────────────
+          +─────────────────                                             
+       25  
+       28 -export default function PubSubDemo() {                        
+       29 -  const [basePath, setBasePath] = useState('');               
+       26 +export default function PubSubMobilePage() {                  
+       27    const [connected, setConnected] = useState(false);
+       28    const [notifications, setNotifications] = useState<Notificat
+           ion[]>([]);
+       32 -  const [orderName, setOrderName] = useState('');             
+       33 -  const [orderAmount, setOrderAmount] = useState('');         
+       34 -  const [orderStatus, setOrderStatus] = useState('pending');  
+       35 -  const [submitting, setSubmitting] = useState(false);        
+       36 -  const [submitMessage, setSubmitMessage] = useState<string | 
+          -null>(null);                                                  
+       29    const eventSourceRef = useRef<EventSource | null>(null);
+       38 -  const idCounter = useRef(0);                                
+       30 +  const notifId = useRef(0);                                  
+       31  
+       32    useEffect(() => {
+       41 -    setBasePath(getEgdeskBasePath());                         
+       42 -    connect();                                                
+       43 -    return () => {                                            
+       44 -      if (eventSourceRef.current) eventSourceRef.current.close
+          -();                                                           
+       45 -    };                                                        
+       46 -  }, []);                                                     
+       47 -                                                              
+       48 -  const connect = useCallback(() => {                         
+       49 -    if (eventSourceRef.current) eventSourceRef.current.close()
+          -;                                                             
+       50 -                                                              
+       33      const apiUrl = process.env.NEXT_PUBLIC_EGDESK_API_URL || '
+           http://localhost:8080';
+       52 -    const es = new EventSource(`${apiUrl}/user-data/sse`);    
+       34 +    const apiKey = process.env.NEXT_PUBLIC_EGDESK_API_KEY || '
+          +';                                                            
+       35 +    const sseUrl = apiKey                                     
+       36 +      ? `${apiUrl}/user-data/sse?key=${encodeURIComponent(apiK
+          +ey)}`                                                         
+       37 +      : `${apiUrl}/user-data/sse`;                            
+       38 +                                                              
+       39 +    const es = new EventSource(sseUrl);                       
+       40      eventSourceRef.current = es;
+       41  
+       42      es.addEventListener('message', (e: MessageEvent) => {
+       43        try {
+       44          const msg = JSON.parse(e.data);
+       45          if (msg.method !== 'egdesk/user-data-changed') return;
+       59 -        const event: UserDataChangeEvent = msg.params;        
+       60 -                                                              
+       61 -        const notif = buildNotification(event);               
+       62 -        if (notif) {                                          
+       63 -          setNotifications((prev) => [notif, ...prev].slice(0,
+          - 20));                                                        
+       64 -        }                                                     
+       46 +        const evt: UserDataChangeEvent = msg.params;          
+       47 +        const id = ++notifId.current;                         
+       48 +        const time = new Date().toLocaleTimeString([], { hour:
+          + '2-digit', minute: '2-digit', second: '2-digit' });          
+       49 +        const table = evt.tableName || 'unknown';             
+       50 +        let title = 'Data changed';                           
+       51 +        if (evt.action === 'insert') title = 'New order receiv
+          +ed';                                                          
+       52 +        else if (evt.action === 'update') title = 'Order updat
+          +ed';                                                          
+       53 +        else if (evt.action === 'delete') title = 'Order remov
+          +ed';                                                          
+       54 +        else if (evt.action === 'create_table') title = 'Table
+          + created';                                                    
+       55 +        setNotifications(prev => [{ id, title, body: `${evt.ac
+          +tion} on "${table}"`, time, action: evt.action }, ...prev].sli
+          +ce(0, 50));                                                   
+       56        } catch { /* ignore */ }
+       57      });
+       58  
+       59      es.addEventListener('connected', () => setConnected(true))
+           ;
+       60      es.addEventListener('open', () => setConnected(true));
+       61      es.addEventListener('error', () => setConnected(false));
+       62 +                                                              
+       63 +    return () => { es.close(); };                             
+       64    }, []);
+       65  
+       73 -  function buildNotification(event: UserDataChangeEvent): Noti
+          -fication | null {                                             
+       74 -    const id = ++idCounter.current;                           
+       75 -    const time = new Date().toLocaleTimeString([], { hour: '2-
+          -digit', minute: '2-digit' });                                 
+       76 -    const table = event.tableName || 'unknown';               
+       77 -                                                              
+       78 -    switch (event.action) {                                   
+       79 -      case 'insert':                                          
+       80 -        return { id, title: 'New order received', body: `A new
+          - row was added to "${table}".`, time, action: 'insert' };     
+       81 -      case 'update':                                          
+       82 -        return { id, title: 'Order updated', body: `A row in "
+          -${table}" was modified.`, time, action: 'update' };           
+       83 -      case 'delete':                                          
+       84 -        return { id, title: 'Order removed', body: `A row was 
+          -deleted from "${table}".`, time, action: 'delete' };          
+       85 -      case 'create_table':                                    
+       86 -        return { id, title: 'Table created', body: `New table 
+          -"${table}" was created.`, time, action: 'create_table' };     
+       87 -      default:                                                
+       88 -        return { id, title: `Data changed`, body: `${event.act
+          -ion} on "${table}".`, time, action: event.action };           
+       89 -    }                                                         
+       90 -  }                                                           
+       91 -                                                              
+       92 -  const handleSubmitOrder = async () => {                     
+       93 -    if (!orderName.trim()) return;                            
+       94 -    setSubmitting(true);                                      
+       95 -    setSubmitMessage(null);                                   
+       96 -    try {                                                     
+       97 -      const res = await apiFetch('/__user_data_proxy', {      
+       98 -        method: 'POST',                                       
+       99 -        headers: { 'Content-Type': 'application/json' },      
+      100 -        body: JSON.stringify({                                
+      101 -          tool: 'user_data_insert_rows',                      
+      102 -          arguments: {                                        
+      103 -            tableName: 'orders',                              
+      104 -            rows: [{                                          
+      105 -              customer_name: orderName.trim(),                
+      106 -              amount: orderAmount || '0',                     
+      107 -              status: orderStatus,                            
+      108 -              created_at: new Date().toISOString(),           
+      109 -            }],                                               
+      110 -          },                                                  
+      111 -        }),                                                   
+      112 -      });                                                     
+      113 -      const data = await res.json();                          
+      114 -      if (data?.success || data?.result) {                    
+      115 -        setSubmitMessage('Order saved!');                     
+      116 -        setOrderName('');                                     
+      117 -        setOrderAmount('');                                   
+      118 -      } else {                                                
+      119 -        setSubmitMessage(`Error: ${data?.error || 'Unknown'}`)
+          -;                                                             
+      120 -      }                                                       
+      121 -    } catch (err: any) {                                      
+      122 -      setSubmitMessage(`Error: ${err.message}`);              
+      123 -    }                                                         
+      124 -    setSubmitting(false);                                     
+      125 -  };                                                          
+      126 -                                                              
+      127 -  const navLinks = getDemoNavLinks(basePath, '/pubsub');      
+      128 -                                                              
+       66    return (
+      130 -    <main style={pageStyle}>                                  
+      131 -      <nav style={navStyle}>                                  
+      132 -        {navLinks.map((l) => (                                
+      133 -          <a key={l.href} href={l.href} style={navLinkStyle}>{
+          -l.label}</a>                                                  
+      134 -        ))}                                                   
+      135 -      </nav>                                                  
+      136 -                                                              
+      137 -      <h1 style={titleStyle}>Real-Time Pub/Sub</h1>           
+      138 -      <p style={descStyle}>                                   
+      139 -        Submit an order on the desktop — the mobile device rec
+          -eives a push notification instantly via SSE.                  
+      140 -      </p>                                                    
+      141 -                                                              
+      142 -      <div style={{ display: 'flex', alignItems: 'center', gap
+          -: 8, marginBottom: 20 }}>                                     
+      143 -        <span style={{ ...statusDot, background: connected ? '
+          -#10b981' : '#ef4444' }} />                                    
+      144 -        <span style={{ fontSize: 13, color: '#6b7280' }}>     
+      145 -          {connected ? 'SSE connected' : 'SSE disconnected'}  
+       67 +    <div style={shellStyle}>                                  
+       68 +      {/* Status bar */}                                      
+       69 +      <div style={statusBarStyle}>                            
+       70 +        <span style={{ fontWeight: 700 }}>                    
+       71 +          {new Date().toLocaleTimeString([], { hour: '2-digit'
+          +, minute: '2-digit' })}                                       
+       72          </span>
+       73 +        <span style={{ display: 'flex', alignItems: 'center', 
+          +gap: 6 }}>                                                    
+       74 +          <span style={{ ...dotStyle, background: connected ? 
+          +'#22c55e' : '#ef4444' }} />                                   
+       75 +          <span style={{ fontSize: 12, color: connected ? '#04
+          +7857' : '#dc2626' }}>                                         
+       76 +            {connected ? 'Live' : 'Disconnected'}             
+       77 +          </span>                                             
+       78 +        </span>                                               
+       79        </div>
+       80  
+      149 -      {/* Split screen */}                                    
+      150 -      <div style={splitContainer}>                            
+      151 -        {/* Desktop panel */}                                 
+      152 -        <div style={desktopFrame}>                            
+      153 -          <div style={desktopTitleBar}>                       
+      154 -            <div style={trafficLights}>                       
+      155 -              <span style={{ ...dot, background: '#ff5f57' }} 
+          -/>                                                            
+      156 -              <span style={{ ...dot, background: '#febc2e' }} 
+          -/>                                                            
+      157 -              <span style={{ ...dot, background: '#28c840' }} 
+          -/>                                                            
+      158 -            </div>                                            
+      159 -            <span style={desktopTitleText}>Admin Dashboard</sp
+          -an>                                                           
+      160 -            <div style={{ width: 52 }} />                     
+      161 -          </div>                                              
+      162 -          <div style={desktopContent}>                        
+      163 -            <h3 style={panelTitle}>New Order</h3>             
+      164 -            <div style={formGroup}>                           
+      165 -              <label style={labelStyle}>Customer Name</label> 
+      166 -              <input                                          
+      167 -                style={inputStyle}                            
+      168 -                value={orderName}                             
+      169 -                onChange={(e) => setOrderName(e.target.value)}
+      170 -                placeholder="John Doe"                        
+      171 -              />                                              
+      172 -            </div>                                            
+      173 -            <div style={formGroup}>                           
+      174 -              <label style={labelStyle}>Amount</label>        
+      175 -              <input                                          
+      176 -                style={inputStyle}                            
+      177 -                value={orderAmount}                           
+      178 -                onChange={(e) => setOrderAmount(e.target.value
+          -)}                                                            
+      179 -                placeholder="49900"                           
+      180 -                type="number"                                 
+      181 -              />                                              
+      182 -            </div>                                            
+      183 -            <div style={formGroup}>                           
+      184 -              <label style={labelStyle}>Status</label>        
+      185 -              <select                                         
+      186 -                style={inputStyle}                            
+      187 -                value={orderStatus}                           
+      188 -                onChange={(e) => setOrderStatus(e.target.value
+          -)}                                                            
+      189 -              >                                               
+      190 -                <option value="pending">Pending</option>      
+      191 -                <option value="confirmed">Confirmed</option>  
+      192 -                <option value="shipped">Shipped</option>      
+      193 -              </select>                                       
+      194 -            </div>                                            
+      195 -            <button                                           
+      196 -              style={{ ...desktopBtn, opacity: submitting ? 0.
+          -6 : 1 }}                                                      
+      197 -              onClick={handleSubmitOrder}                     
+      198 -              disabled={submitting}                           
+      199 -            >                                                 
+      200 -              {submitting ? 'Saving...' : 'Save Order'}       
+      201 -            </button>                                         
+      202 -            {submitMessage && (                               
+      203 -              <p style={{ fontSize: 13, marginTop: 8, color: s
+          -ubmitMessage.startsWith('Error') ? '#ef4444' : '#10b981' }}>  
+      204 -                {submitMessage}                               
+      205 -              </p>                                            
+      206 -            )}                                                
+      207 -          </div>                                              
+      208 -        </div>                                                
+       81 +      {/* Header */}                                          
+       82 +      <div style={headerStyle}>                               
+       83 +        <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1
+          +11827', margin: 0 }}>Notifications</h1>                       
+       84 +        <p style={{ fontSize: 12, color: '#6b7280', margin: '4
+          +px 0 0' }}>                                                   
+       85 +          Real-time push via SSE from EGDesk                  
+       86 +        </p>                                                  
+       87 +      </div>                                                  
+       88  
+      210 -        {/* Arrow */}                                         
+      211 -        <div style={arrowContainer}>                          
+      212 -          <div style={arrowLine} />                           
+      213 -          <span style={arrowLabel}>SSE push</span>            
+      214 -        </div>                                                
+      215 -                                                              
+      216 -        {/* Mobile panel */}                                  
+      217 -        <div style={phoneFrame}>                              
+      218 -          <div style={phoneNotch} />                          
+      219 -          <div style={phoneScreen}>                           
+      220 -            <div style={phoneStatusBar}>                      
+      221 -              <span style={{ fontSize: 11, fontWeight: 600 }}>
+          -9:41</span>                                                   
+      222 -              <div style={{ display: 'flex', gap: 4 }}>       
+      223 -                <span style={{ fontSize: 10 }}>5G</span>      
+      224 -                <span style={{ fontSize: 10 }}>100%</span>    
+       89 +      {/* Notification list */}                               
+       90 +      <div style={listStyle}>                                 
+       91 +        {notifications.length === 0 ? (                       
+       92 +          <div style={emptyStyle}>                            
+       93 +            <div style={{ fontSize: 32, marginBottom: 12 }}>&#
+          +128276;</div>                                                 
+       94 +            <p style={{ color: '#9ca3af', fontSize: 14, margin
+          +: 0 }}>                                                       
+       95 +              {connected ? 'Waiting for events…' : 'Connecting
+          + to EGDesk…'}                                                 
+       96 +            </p>                                              
+       97 +            <p style={{ color: '#d1d5db', fontSize: 12, margin
+          +: '8px 0 0' }}>                                               
+       98 +              Insert data from the Database demo to see notifi
+          +cations here                                                  
+       99 +            </p>                                              
+      100 +          </div>                                              
+      101 +        ) : (                                                 
+      102 +          notifications.map(n => (                            
+      103 +            <div key={n.id} style={notifStyle}>               
+      104 +              <div style={notifIconStyle(n.action)}>          
+      105 +                {n.action === 'insert' ? '+' : n.action === 'u
+          +pdate' ? '~' : n.action === 'delete' ? '−' : '•'}             
+      106                </div>
+      226 -            </div>                                            
+      227 -            <div style={phoneContent}>                        
+      228 -              <h4 style={phoneTitle}>Notifications</h4>       
+      229 -              {notifications.length === 0 ? (                 
+      230 -                <div style={emptyState}>                      
+      231 -                  <span style={{ fontSize: 28 }}>&#128276;</sp
+          -an>                                                           
+      232 -                  <p style={{ color: '#9ca3af', fontSize: 13, 
+          -margin: 0 }}>                                                 
+      233 -                    No notifications yet.<br />Submit an order
+          - to see one appear.                                           
+      234 -                  </p>                                        
+      107 +              <div style={{ flex: 1, minWidth: 0 }}>          
+      108 +                <div style={{ display: 'flex', justifyContent:
+          + 'space-between', alignItems: 'center' }}>                    
+      109 +                  <span style={{ fontSize: 14, fontWeight: 700
+          +, color: '#111827' }}>{n.title}</span>                        
+      110 +                  <span style={{ fontSize: 11, color: '#9ca3af
+          +', whiteSpace: 'nowrap', marginLeft: 8 }}>{n.time}</span>     
+      111                  </div>
+      236 -              ) : (                                           
+      237 -                <div style={notifList}>                       
+      238 -                  {notifications.map((n) => (                 
+      239 -                    <div key={n.id} style={notifCard}>        
+      240 -                      <div style={notifIcon(n.action)}>       
+      241 -                        {n.action === 'insert' ? '＋' : n.acti
+          -on === 'update' ? '✎' : '✕'}                                  
+      242 -                      </div>                                  
+      243 -                      <div style={{ flex: 1, minWidth: 0 }}>  
+      244 -                        <div style={notifTitleStyle}>{n.title}
+          -</div>                                                        
+      245 -                        <div style={notifBody}>{n.body}</div> 
+      246 -                      </div>                                  
+      247 -                      <span style={notifTime}>{n.time}</span> 
+      248 -                    </div>                                    
+      249 -                  ))}                                         
+      250 -                </div>                                        
+      251 -              )}                                              
+      112 +                <p style={{ fontSize: 12, color: '#6b7280', ma
+          +rgin: '2px 0 0' }}>{n.body}</p>                               
+      113 +              </div>                                          
+      114              </div>
+      253 -            <div style={phoneHomeBar} />                      
+      254 -          </div>                                              
+      255 -        </div>                                                
+      115 +          ))                                                  
+      116 +        )}                                                    
+      117        </div>
+      257 -                                                              
+      258 -      {/* Code example */}                                    
+      259 -      <section style={codeSection}>                           
+      260 -        <h3 style={{ fontSize: 16, fontWeight: 700, marginBott
+          -om: 10 }}>Usage in your app</h3>                              
+      261 -        <pre style={codeBlockStyle}>{`import { onUserDataChang
+          -ed } from './egdesk-helpers';                                 
+      262 -                                                              
+      263 -// Subscribe — fires on every insert/update/delete            
+      264 -const unsub = onUserDataChanged((event) => {                  
+      265 -  if (event.action === 'insert' && event.tableName === 'orders
+          -') {                                                          
+      266 -    showNotification('New order received!');                  
+      267 -  }                                                           
+      268 -});                                                           
+      269 -                                                              
+      270 -// Cleanup when component unmounts                            
+      271 -unsub();`}</pre>                                              
+      272 -      </section>                                              
+      273 -    </main>                                                   
+      118 +    </div>                                                    
+      119    );
+      120  }
+      121  
+      122  // ── Styles ─────────────────────────────────────────────────
+           ─────────────────
+      123  
+      279 -const pageStyle: React.CSSProperties = {                      
+      280 -  minHeight: '100vh',                                         
+      281 -  maxWidth: 1000,                                             
+      124 +const shellStyle: React.CSSProperties = {                     
+      125 +  maxWidth: 420,                                              
+      126    margin: '0 auto',
+      283 -  padding: '32px 24px 64px',                                  
+      127 +  minHeight: '100vh',                                         
+      128 +  background: '#f9fafb',                                      
+      129 +  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", 
+          +Roboto, sans-serif',                                          
+      130  };
+      131  
+      286 -const navStyle: React.CSSProperties = {                       
+      132 +const statusBarStyle: React.CSSProperties = {                 
+      133    display: 'flex',
+      288 -  flexWrap: 'wrap',                                           
+      289 -  gap: 8,                                                     
+      290 -  marginBottom: 24,                                           
+      134 +  justifyContent: 'space-between',                            
+      135 +  alignItems: 'center',                                       
+      136 +  padding: '12px 20px',                                       
+      137 +  background: '#fff',                                         
+      138 +  borderBottom: '1px solid #e5e7eb',                          
+      139    fontSize: 13,
+      140  };
+      141  
+      294 -const navLinkStyle: React.CSSProperties = { color: '#2563eb', 
+          -textDecoration: 'none' };                                     
+      295 -                                                              
+      296 -const titleStyle: React.CSSProperties = {                     
+      297 -  fontSize: 32, fontWeight: 800, color: '#111827', marginBotto
+          -m: 8,                                                         
+      142 +const dotStyle: React.CSSProperties = {                       
+      143 +  width: 8,                                                   
+      144 +  height: 8,                                                  
+      145 +  borderRadius: '50%',                                        
+      146  };
+      147  
+      300 -const descStyle: React.CSSProperties = {                      
+      301 -  color: '#4b5563', fontSize: 15, lineHeight: 1.6, marginBotto
+          -m: 16,                                                        
+      302 -};                                                            
+      303 -                                                              
+      304 -const statusDot: React.CSSProperties = {                      
+      305 -  width: 8, height: 8, borderRadius: '50%', display: 'inline-b
+          -lock',                                                        
+      306 -};                                                            
+      307 -                                                              
+      308 -// Split layout                                               
+      309 -const splitContainer: React.CSSProperties = {                 
+      310 -  display: 'flex',                                            
+      311 -  alignItems: 'center',                                       
+      312 -  justifyContent: 'center',                                   
+      313 -  gap: 24,                                                    
+      314 -  marginBottom: 40,                                           
+      315 -  flexWrap: 'wrap',                                           
+      316 -};                                                            
+      317 -                                                              
+      318 -// Desktop frame                                              
+      319 -const desktopFrame: React.CSSProperties = {                   
+      320 -  width: 380,                                                 
+      148 +const headerStyle: React.CSSProperties = {                    
+      149 +  padding: '20px 20px 16px',                                  
+      150    background: '#fff',
+      322 -  border: '1px solid #d1d5db',                                
+      323 -  borderRadius: 10,                                           
+      324 -  boxShadow: '0 4px 24px rgba(0,0,0,0.08)',                   
+      325 -  overflow: 'hidden',                                         
+      326 -};                                                            
+      327 -                                                              
+      328 -const desktopTitleBar: React.CSSProperties = {                
+      329 -  display: 'flex',                                            
+      330 -  alignItems: 'center',                                       
+      331 -  justifyContent: 'space-between',                            
+      332 -  background: '#f3f4f6',                                      
+      333 -  padding: '8px 12px',                                        
+      151    borderBottom: '1px solid #e5e7eb',
+      152  };
+      153  
+      337 -const trafficLights: React.CSSProperties = { display: 'flex', 
+          -gap: 5 };                                                     
+      338 -                                                              
+      339 -const dot: React.CSSProperties = { width: 10, height: 10, bord
+          -erRadius: '50%' };                                            
+      340 -                                                              
+      341 -const desktopTitleText: React.CSSProperties = {               
+      342 -  fontSize: 12, fontWeight: 600, color: '#6b7280',            
+      154 +const listStyle: React.CSSProperties = {                      
+      155 +  padding: '12px 16px',                                       
+      156 +  display: 'grid',                                            
+      157 +  gap: 10,                                                    
+      158  };
+      159  
+      345 -const desktopContent: React.CSSProperties = { padding: 20 };  
+      346 -                                                              
+      347 -const panelTitle: React.CSSProperties = {                     
+      348 -  fontSize: 16, fontWeight: 700, color: '#111827', marginBotto
+          -m: 16,                                                        
+      349 -};                                                            
+      350 -                                                              
+      351 -const formGroup: React.CSSProperties = { marginBottom: 12 };  
+      352 -                                                              
+      353 -const labelStyle: React.CSSProperties = {                     
+      354 -  display: 'block', fontSize: 12, fontWeight: 600, color: '#37
+          -4151', marginBottom: 4,                                       
+      355 -};                                                            
+      356 -                                                              
+      357 -const inputStyle: React.CSSProperties = {                     
+      358 -  width: '100%',                                              
+      359 -  padding: '8px 10px',                                        
+      360 -  fontSize: 14,                                               
+      361 -  border: '1px solid #d1d5db',                                
+      362 -  borderRadius: 6,                                            
+      363 -  outline: 'none',                                            
+      364 -  boxSizing: 'border-box',                                    
+      365 -};                                                            
+      366 -                                                              
+      367 -const desktopBtn: React.CSSProperties = {                     
+      368 -  marginTop: 8,                                               
+      369 -  width: '100%',                                              
+      370 -  padding: '10px 0',                                          
+      371 -  fontSize: 14,                                               
+      372 -  fontWeight: 600,                                            
+      373 -  color: '#fff',                                              
+      374 -  background: '#2563eb',                                      
+      375 -  border: 'none',                                             
+      376 -  borderRadius: 6,                                            
+      377 -  cursor: 'pointer',                                          
+      378 -};                                                            
+      379 -                                                              
+      380 -// Arrow                                                      
+      381 -const arrowContainer: React.CSSProperties = {                 
+      382 -  display: 'flex',                                            
+      383 -  flexDirection: 'column',                                    
+      384 -  alignItems: 'center',                                       
+      385 -  gap: 4,                                                     
+      386 -};                                                            
+      387 -                                                              
+      388 -const arrowLine: React.CSSProperties = {                      
+      389 -  width: 48,                                                  
+      390 -  height: 2,                                                  
+      391 -  background: 'linear-gradient(90deg, #2563eb, #8b5cf6)',     
+      392 -  position: 'relative',                                       
+      393 -};                                                            
+      394 -                                                              
+      395 -const arrowLabel: React.CSSProperties = {                     
+      396 -  fontSize: 11,                                               
+      397 -  fontWeight: 700,                                            
+      398 -  color: '#6366f1',                                           
+      399 -  letterSpacing: 0.5,                                         
+      400 -};                                                            
+      401 -                                                              
+      402 -// Phone frame                                                
+      403 -const phoneFrame: React.CSSProperties = {                     
+      404 -  width: 260,                                                 
+      405 -  height: 520,                                                
+      406 -  background: '#1f2937',                                      
+      407 -  borderRadius: 36,                                           
+      408 -  padding: 8,                                                 
+      409 -  boxShadow: '0 8px 32px rgba(0,0,0,0.18)',                   
+      410 -  position: 'relative',                                       
+      411 -};                                                            
+      412 -                                                              
+      413 -const phoneNotch: React.CSSProperties = {                     
+      414 -  position: 'absolute',                                       
+      415 -  top: 8,                                                     
+      416 -  left: '50%',                                                
+      417 -  transform: 'translateX(-50%)',                              
+      418 -  width: 80,                                                  
+      419 -  height: 22,                                                 
+      420 -  background: '#1f2937',                                      
+      421 -  borderRadius: '0 0 14px 14px',                              
+      422 -  zIndex: 2,                                                  
+      423 -};                                                            
+      424 -                                                              
+      425 -const phoneScreen: React.CSSProperties = {                    
+      426 -  width: '100%',                                              
+      427 -  height: '100%',                                             
+      428 -  background: '#f9fafb',                                      
+      429 -  borderRadius: 28,                                           
+      430 -  overflow: 'hidden',                                         
+      431 -  display: 'flex',                                            
+      432 -  flexDirection: 'column',                                    
+      433 -};                                                            
+      434 -                                                              
+      435 -const phoneStatusBar: React.CSSProperties = {                 
+      436 -  display: 'flex',                                            
+      437 -  justifyContent: 'space-between',                            
+      438 -  alignItems: 'center',                                       
+      439 -  padding: '10px 20px 6px',                                   
+      440 -  fontSize: 12,                                               
+      441 -  color: '#374151',                                           
+      442 -};                                                            
+      443 -                                                              
+      444 -const phoneContent: React.CSSProperties = {                   
+      445 -  flex: 1,                                                    
+      446 -  padding: '8px 12px',                                        
+      447 -  overflowY: 'auto',                                          
+      448 -};                                                            
+      449 -                                                              
+      450 -const phoneTitle: React.CSSProperties = {                     
+      451 -  fontSize: 18, fontWeight: 700, color: '#111827', margin: '0 
+          -0 12px 4px',                                                  
+      452 -};                                                            
+      453 -                                                              
+      454 -const emptyState: React.CSSProperties = {                     
+      455 -  display: 'flex',                                            
+      456 -  flexDirection: 'column',                                    
+      457 -  alignItems: 'center',                                       
+      458 -  justifyContent: 'center',                                   
+      459 -  height: '60%',                                              
+      460 -  gap: 8,                                                     
+      160 +const emptyStyle: React.CSSProperties = {                     
+      161    textAlign: 'center',
+      162 +  padding: '60px 20px',                                       
+      163  };
+      164  
+      464 -const notifList: React.CSSProperties = {                      
+      165 +const notifStyle: React.CSSProperties = {                     
+      166    display: 'flex',
+      466 -  flexDirection: 'column',                                    
+      467 -  gap: 8,                                                     
+      468 -};                                                            
+      469 -                                                              
+      470 -const notifCard: React.CSSProperties = {                      
+      471 -  display: 'flex',                                            
+      167 +  gap: 12,                                                    
+      168    alignItems: 'flex-start',
+      473 -  gap: 10,                                                    
+      474 -  padding: '10px 12px',                                       
+      169    background: '#fff',
+      170 +  border: '1px solid #e5e7eb',                                
+      171    borderRadius: 12,
+      477 -  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',                    
+      172 +  padding: '14px 16px',                                       
+      173 +  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',                    
+      174  };
+      175  
+      480 -const iconColors: Record<string, string> = {                  
+      481 -  insert: '#10b981',                                          
+      482 -  update: '#f59e0b',                                          
+      483 -  delete: '#ef4444',                                          
+      484 -  create_table: '#8b5cf6',                                    
+      485 -};                                                            
+      486 -                                                              
+      487 -function notifIcon(action: string): React.CSSProperties {     
+      488 -  return {                                                    
+      489 -    width: 28,                                                
+      490 -    height: 28,                                               
+      491 -    borderRadius: 8,                                          
+      492 -    background: (iconColors[action] || '#6b7280') + '18',     
+      493 -    color: iconColors[action] || '#6b7280',                   
+      494 -    display: 'flex',                                          
+      495 -    alignItems: 'center',                                     
+      496 -    justifyContent: 'center',                                 
+      497 -    fontSize: 14,                                             
+      498 -    fontWeight: 700,                                          
+      499 -    flexShrink: 0,                                            
+      500 -  };                                                          
+      501 -}                                                             
+      502 -                                                              
+      503 -const notifTitleStyle: React.CSSProperties = {                
+      504 -  fontSize: 13, fontWeight: 600, color: '#111827', marginBotto
+          -m: 2,                                                         
+      505 -};                                                            
+      506 -                                                              
+      507 -const notifBody: React.CSSProperties = {                      
+      508 -  fontSize: 11, color: '#6b7280', lineHeight: 1.4,            
+      509 -};                                                            
+      510 -                                                              
+      511 -const notifTime: React.CSSProperties = {                      
+      512 -  fontSize: 10, color: '#9ca3af', whiteSpace: 'nowrap', margin
+          -Top: 2,                                                       
+      513 -};                                                            
+      514 -                                                              
+      515 -const phoneHomeBar: React.CSSProperties = {                   
+      516 -  width: 100,                                                 
+      517 -  height: 4,                                                  
+      518 -  background: '#d1d5db',                                      
+      519 -  borderRadius: 2,                                            
+      520 -  margin: '8px auto 10px',                                    
+      521 -};                                                            
+      522 -                                                              
+      523 -// Code section                                               
+      524 -const codeSection: React.CSSProperties = {                    
+      525 -  padding: 20,                                                
+      526 -  background: '#fff',                                         
+      527 -  border: '1px solid #e5e7eb',                                
+      528 -  borderRadius: 8,                                            
+      529 -};                                                            
+      530 -                                                              
+      531 -const codeBlockStyle: React.CSSProperties = {                 
+      532 -  padding: 16,                                                
+      533 -  background: '#1f2937',                                      
+      534 -  color: '#e5e7eb',                                           
+      535 -  borderRadius: 8,                                            
+      536 -  fontSize: 13,                                               
+      537 -  fontFamily: 'monospace',                                    
+      538 -  lineHeight: 1.6,                                            
+      539 -  overflow: 'auto',                                           
+      540 -};                                                            
+      176 +const notifIconStyle = (action: string): React.CSSProperties =
+          +> ({                                                          
+      177 +  width: 32,                                                  
+      178 +  height: 32,                                                 
+      179 +  borderRadius: '50%',                                        
+      180 +  display: 'flex',                                            
+      181 +  alignItems: 'center',                                       
+      182 +  justifyContent: 'center',                                   
+      183 +  fontSize: 16,                                               
+      184 +  fontWeight: 700,                                            
+      185 +  flexShrink: 0,                                              
+      186 +  background: action === 'insert' ? '#ecfdf5' : action === 'de
+          +lete' ? '#fef2f2' : '#eff6ff',                                
+      187 +  color: action === 'insert' ? '#047857' : action === 'delete'
+          + ? '#dc2626' : '#2563eb',                                     
+      188 +});                                                           
+
+⏺ Now add the "Open in new tab" button to the phone frame in the database page:
+
+⏺ Update(app/database/page.tsx)
+  ⎿  Added 7 lines, removed 1 line
+      868                <div style={phoneNotchStyle} />
+      869                <div style={phoneStatusBarStyle}>
+      870                  <span style={{ fontSize: 11, fontWeight: 600 }
+           }>9:41</span>
+      871 -                <span style={{ fontSize: 11 }}>EGDesk</span>  
+      871 +                <button                                       
+      872 +                  onClick={() => window.open(`${getEgdeskBaseP
+          +ath()}/pubsub`, '_blank', 'width=420,height=700')}            
+      873 +                  style={openTabBtnStyle}                     
+      874 +                  title="Open in separate window"             
+      875 +                >                                             
+      876 +                  &#8599;                                     
+      877 +                </button>                                     
+      878                </div>
+      879                <div style={phoneContentStyle}>
+      880                  {notifications.length === 0 ? (
+
+⏺ Now add the openTabBtnStyle:
+
+⏺ Update(app/database/page.tsx)
+  ⎿  Added 11 lines
+      1514    borderRadius: 10,
+      1515    padding: '10px 12px',
+      1516  };
+      1517 +                                                             
+      1518 +const openTabBtnStyle: React.CSSProperties = {               
+      1519 +  background: 'none',                                        
+      1520 +  border: '1px solid #d1d5db',                               
+      1521 +  borderRadius: 4,                                           
+      1522 +  fontSize: 12,                                              
+      1523 +  lineHeight: 1,                                             
+      1524 +  padding: '2px 5px',                                        
+      1525 +  cursor: 'pointer',                                         
+      1526 +  color: '#6b7280',                                          
+      1527 +};                                                           
+
+⏺ Done. Now the phone frame has a ↗ button in the status bar that opens /pubsub
+  in a separate small window (420x700). That page auto-connects to the SSE
+  stream and shows notifications independently — so you can keep it open
+  side-by-side while inserting orders from the main tab. Feels much more like a
+  real push notification experience.
+
+✻ Crunched for 1m 6s
+
+❯ what are other db stuff that we can provide? like pubsub is good, what other  
+  features might be better? queue?                                              
+
+⏺ Good question. Given EGDesk is a local-first platform for small businesses
+  with SQLite backing, here are features that would pair well with pub/sub:
+
+  High value:
+
+  1. Job Queue — enqueueJob('send-receipt', { orderId }), with status tracking,
+  retries, delayed execution. Backed by a _jobs table. Very natural next step
+  from pub/sub — "react to events" vs "schedule work."
+  2. Audit Log / Change History — automatic row versioning. Every
+  insert/update/delete gets logged with before/after snapshots. Korean
+  businesses need this for compliance. Could expose getRowHistory(table, rowId).
+  3. Webhooks (outbound) — like pub/sub but pushes to external URLs. User
+  registers onDataChanged → POST https://my-slack-webhook. Complements SSE
+  (inbound to browser) with outbound to any service.
+
+  Medium value:
+
+  4. Scheduled Queries / Cron — scheduleQuery('daily-summary', '0 9 * * *', 
+  'SELECT ...'). Useful for reports, cleanup, recurring tasks.
+  5. Materialized Aggregations — auto-maintained rollups like "total orders by
+  status" that update on every write. Faster dashboards without manual
+  re-querying.
+  6. Row-level Locks / Optimistic Concurrency — updateRow(..., { 
+  expectedVersion: 3 }). Prevents conflicts when multiple tabs/users edit the
+  same row.
+
+  Nice-to-have:
+
+  7. Data Expiry / TTL — auto-delete rows after N days (session tokens, temp
+  data)
+  8. Blob/File Attachments — attach files to rows with a storage API
+
+  ---
+  My take: Queue is the strongest next feature. It's the natural companion to
+  pub/sub — pub/sub says "something happened," queue says "do something about
+  it." Together they form an event-driven system that's really compelling for a
+  demo. You could show: insert order → SSE notification appears on phone → job
+  auto-enqueued → job processes (e.g. "generate invoice") → another SSE
+  notification shows "invoice ready."
+
+  Want me to spec out the queue?
+
+※ recap: We were adding real-time features to the database demo. The pub/sub tab
+   with SSE is working and the phone popup window is done. You asked about 
+  adding more features like a job queue next.
+
+❯ we already have image storage logic, can you check?                           
+
+⏺ Explore(Find image storage logic)
+  ⎿  Done (33 tool uses · 58.6k tokens · 1m 41s)
+  (ctrl+o to expand)
+
+⏺ You already have a full file/blob storage system. Here's what exists:
+
+  File Storage Manager (apps/egdesk/src/main/user-data/file-storage-manager.ts)
+  - Hybrid approach: files < 100KB → SQLite BLOB, > 100KB → filesystem
+  - Auto gzip compression for 10-100KB files
+  - Hash-based directory structure for large files
+
+  MCP Tools exposed:
+  - user_data_upload_file — base64 upload, auto-decides storage type
+  - user_data_download_file — retrieves by fileId or (table, row, column)
+  - user_data_delete_file — cleans up DB + filesystem
+  - user_data_list_files — list files for a row
+  - user_data_get_file_stats — storage statistics
+
+  ---
+  So blob/file storage is already built. That leaves these as the strongest
+  remaining features to demo:
+
+  1. Queue — still the top pick, you don't have this yet
+  2. Audit Log / Change History — you have pub/sub notifications but no
+  persistent history of what changed (before/after diffs)
+  3. Webhooks (outbound) — register URLs to POST to on data change
+
+  Want me to build one of these?
+
+✻ Crunched for 1m 59s
+
+※ recap: Pub/sub SSE demo is working. The phone frame now has an "open in new 
+  tab" button. Next: decide if you want me to build the queue feature, or if 
+  there's something else to tackle.
