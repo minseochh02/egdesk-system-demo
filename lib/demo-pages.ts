@@ -135,11 +135,11 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['listBanks', 'queryBankTransactions', 'queryTaxInvoices'],
   },
   {
-    title: 'Internal Knowledge MCP',
-    description: 'Browse business identity snapshots and search internal knowledge documents.',
-    href: '/internal-knowledge-mcp',
-    eyebrow: 'Company knowledge',
-    items: ['listBusinessIdentitySnapshots', 'searchKnowledgeContent'],
+    title: 'Business Identity MCP',
+    description: 'Manage brand identity snapshots, product catalogs, and AI brand faces / spokespersons.',
+    href: '/business-identity-mcp',
+    eyebrow: 'Business Identity',
+    items: ['bi_list_snapshots', 'bi_catalog_list_products', 'bi_face_list'],
   },
   {
     title: 'Browser Recording MCP',
@@ -161,14 +161,6 @@ export const DEMO_PAGES: DemoPageLink[] = [
     href: '/inventory-mcp',
     eyebrow: 'Inventory scanner',
     items: ['inventory_setup_scanner', 'YOLO', 'DINO'],
-  },
-  {
-    title: 'BI Products MCP',
-    description:
-      'Register BI products with photos (required before Instagram/YouTube/blog bi_products schedules) — confirm imageCount > 0.',
-    href: '/bi-products-mcp',
-    eyebrow: 'Product catalog',
-    items: ['bi_list_snapshots', 'bi_register_product', 'bi_list_products'],
   },
   {
     title: 'Blog MCP',
@@ -203,18 +195,6 @@ export const DEMO_PAGES: DemoPageLink[] = [
       'instagram_schedule_create',
       'instagram_schedule_run_now',
       'instagram_list_history',
-    ],
-  },
-  {
-    title: 'Brand Face MCP',
-    description:
-      'Generate AI brand face / spokesperson personas on BI snapshots for consistent YouTube Shorts on-camera talent.',
-    href: '/brand-face-mcp',
-    eyebrow: 'Brand spokesperson',
-    items: [
-      'brand_face_generate',
-      'brand_face_list',
-      'brand_face_set_preferred',
     ],
   },
   {
