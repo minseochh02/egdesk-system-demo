@@ -205,7 +205,9 @@ export function resolveEgdeskPublicUrl(): string {
   const onKnownGateway =
     hostname === 'tunneling-service.onrender.com' || hostname.endsWith('.egdesk.cloud');
 
-  if (onTunnelPath && (onKnownGateway || !isLoopbackHostname(hostname))) {
+  // Only the Render/egdesk.cloud gateway uses /t/{id} in the OAuth bounce path.
+  // Custom domains bounce at {origin}/visitor-auth/callback/{id} — no /t/ prefix.
+  if (onTunnelPath && onKnownGateway) {
     return `${window.location.origin}/t/${parts[1]}`;
   }
 
