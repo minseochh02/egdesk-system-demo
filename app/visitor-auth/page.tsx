@@ -9,6 +9,7 @@ import {
   getVisitorGoogleStatus,
   getVisitorSheetRange,
   listVisitorDriveFiles,
+  resolveEgdeskPublicUrl,
   signOutVisitorGoogle,
   startVisitorGoogleLogin,
   VISITOR_BASIC_SCOPES,
@@ -44,6 +45,7 @@ function maskSessionId(value: string | null): string {
 export default function VisitorAuthDemoPage() {
   const [basePath, setBasePath] = useState('');
   const [siteOrigin, setSiteOrigin] = useState('');
+  const [egdeskPublicUrl, setEgdeskPublicUrl] = useState('');
   const [status, setStatus] = useState<VisitorStatus | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,13 +59,15 @@ export default function VisitorAuthDemoPage() {
     {
       id: 'start',
       title: '1. startVisitorGoogleLogin()',
-      description: 'Hosted site asks EGDesk to start Google OAuth. User never sees Supabase keys.',
+      description:
+        'Hosted site asks EGDesk to start Google OAuth. Each login gets its own /visitor-auth/callback/{pendingId} bounce URL.',
       state: 'idle',
     },
     {
       id: 'callback',
       title: '2. /auth/callback?code=…',
-      description: 'EGDesk redirects back with a one-time code. This page exchanges it for an opaque session id.',
+      description:
+        'After Google completes on EGDesk, the site receives a one-time code and exchanges it for an opaque session id.',
       state: 'idle',
     },
     {
@@ -121,14 +125,26 @@ export default function VisitorAuthDemoPage() {
   useEffect(() => {
     setBasePath(getEgdeskBasePath());
     setSiteOrigin(window.location.origin);
+    setEgdeskPublicUrl(resolveEgdeskPublicUrl());
     setSessionId(readLocalSession());
 
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     if (code) {
       patchStep('callback', { state: 'running', detail: 'Exchanging one-time code…' });
+      let finished = false;
+      const timer = window.setTimeout(() => {
+        if (finished) return;
+        finished = true;
+        const message = 'Sign-in timed out while exchanging the one-time code.';
+        setError(message);
+        patchStep('callback', { state: 'error', detail: message });
+      }, 20000);
       void exchangeVisitorAuthCode(code)
         .then((result) => {
+          if (finished) return;
+          finished = true;
+          window.clearTimeout(timer);
           setLastExchange(result as Record<string, unknown>);
           setSessionId(result.sessionId);
           patchStep('start', { state: 'ok', detail: 'OAuth completed on EGDesk' });
@@ -140,6 +156,9 @@ export default function VisitorAuthDemoPage() {
           return refreshStatus();
         })
         .catch((err: unknown) => {
+          if (finished) return;
+          finished = true;
+          window.clearTimeout(timer);
           const message = err instanceof Error ? err.message : String(err);
           setError(message);
           patchStep('callback', { state: 'error', detail: message });
@@ -240,8 +259,9 @@ export default function VisitorAuthDemoPage() {
         <h1 style={titleStyle}>Visitor Google login test</h1>
         <p style={introStyle}>
           This page exercises the brokered login flow: the hosted Next.js site never receives Supabase keys.
-          Google bounces through EGDesk&apos;s local callback, then this page gets an opaque session id plus
-          user info for <strong>this localhost origin</strong> — not egdesk.cloud.
+          Google bounces through EGDesk at <code style={codeStyle}>/visitor-auth/callback/{'{pendingId}'}</code>,
+          then this site receives a one-time code and stores an opaque session id bound to{' '}
+          <strong>this origin</strong>.
         </p>
         <nav style={navStyle} aria-label="Demo navigation">
           {navLinks.map((link) => (
@@ -306,6 +326,10 @@ export default function VisitorAuthDemoPage() {
           <dt style={kvTermStyle}>Audience</dt>
           <dd style={kvDescStyle}>
             <code style={codeStyle}>{status?.audience || siteOrigin || '—'}</code>
+          </dd>
+          <dt style={kvTermStyle}>EGDesk OAuth bounce</dt>
+          <dd style={kvDescStyle}>
+            <code style={codeStyle}>{egdeskPublicUrl || '—'}</code>
           </dd>
           <dt style={kvTermStyle}>Opaque session id</dt>
           <dd style={kvDescStyle}>
@@ -410,12 +434,13 @@ export default function VisitorAuthDemoPage() {
           <li>EGDesk HTTP server running with visitor auth enabled.</li>
           <li>
             Local hosted coding returns through{' '}
-            <code style={codeStyle}>http://localhost:54321/auth/callback</code>, then back to this origin.
+            <code style={codeStyle}>http://localhost:54321/visitor-auth/callback/{'{pendingId}'}</code>, then back to this origin.
             The public tunnel uses{' '}
             <code style={codeStyle}>
-              https://tunneling-service.onrender.com/t/{'{id}'}/visitor-auth/callback
+              https://tunneling-service.onrender.com/t/{'{id}'}/visitor-auth/callback/{'{pendingId}'}
             </code>{' '}
-            (allowlist that URL or <code style={codeStyle}>https://tunneling-service.onrender.com/**</code>
+            (allowlist <code style={codeStyle}>http://localhost:54321/visitor-auth/callback/**</code> and{' '}
+            <code style={codeStyle}>https://tunneling-service.onrender.com/**</code>
             ) and then returns to{' '}
             <code style={codeStyle}>/t/{'{id}'}/p/{'{project}'}/auth/callback</code>.
           </li>

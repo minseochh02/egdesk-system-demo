@@ -149,11 +149,11 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['listBrowserRecordingTests', 'runBrowserRecording'],
   },
   {
-    title: 'SSL MCP',
-    description: 'Audit TLS certificates, security headers, and browse stored certificate metadata.',
-    href: '/ssl-mcp',
-    eyebrow: 'Security',
-    items: ['analyzeSslSite', 'checkSslCertificate', 'listSslCertificates'],
+    title: 'Hosting & Coding MCP',
+    description: 'Manage local development servers, projects, and SSL/security audits.',
+    href: '/hosting-coding-mcp',
+    eyebrow: 'Hosting & Coding',
+    items: ['listHostingProjects', 'startHostingServer', 'analyzeHostingSite'],
   },
   {
     title: 'Inventory MCP',

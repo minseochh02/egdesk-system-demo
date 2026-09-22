@@ -34,6 +34,46 @@ const TOOLS: PlaygroundToolDef[] = [
     ],
   },
   {
+    name: 'browser_recording_list_actions',
+    title: 'List actions',
+    description: 'Indexed steps (login vs workflow) for play-up-to.',
+    category: 'tests',
+    helperName: 'listBrowserRecordingActions',
+    fields: [
+      {
+        name: 'testFile',
+        label: 'scriptId',
+        type: 'string',
+        required: true,
+        placeholder: 'scriptId from list_saved_tests',
+      },
+    ],
+  },
+  {
+    name: 'browser_recording_play_up_to',
+    title: 'Play up to action',
+    description: 'Replay through an action index, keep Chrome open, then record a new spec from there.',
+    category: 'run',
+    helperName: 'playBrowserRecordingUpTo',
+    fields: [
+      {
+        name: 'testFile',
+        label: 'scriptId',
+        type: 'string',
+        required: true,
+        placeholder: 'scriptId from list_saved_tests',
+      },
+      {
+        name: 'upToActionIndex',
+        label: 'Up to action index',
+        type: 'number',
+        required: true,
+        placeholder: '4',
+        hint: 'Inclusive 0-based index from list_actions.',
+      },
+    ],
+  },
+  {
     name: 'browser_recording_run',
     title: 'Run replay',
     description: 'Replay a saved recording in Chrome. Pass headless false to watch the browser.',
@@ -111,6 +151,7 @@ const CATEGORIES = [
 
 const RUNNING_HINTS: Record<string, string> = {
   browser_recording_run: 'Replaying actions in Chrome — may take a minute depending on the script.',
+  browser_recording_play_up_to: 'Replaying up to the chosen action, then leaving Chrome open as a live session…',
   browser_recording_list_saved_tests: 'Scanning browser-recorder-tests folder…',
 };
 

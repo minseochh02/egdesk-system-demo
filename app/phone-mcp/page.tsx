@@ -36,6 +36,28 @@ const TOOLS: PlaygroundToolDef[] = [
         type: 'string',
         placeholder: 'officephone',
       },
+      {
+        name: 'googleProfileName',
+        label: 'Shared Google profile (optional)',
+        type: 'string',
+        placeholder: 'my-google-profile',
+      },
+    ],
+  },
+  {
+    name: 'phone_update_device',
+    title: 'Update device',
+    description: 'Change label and/or shared Google profile for a device.',
+    category: 'devices',
+    helperName: 'updatePhoneDevice',
+    fields: [
+      { name: 'deviceId', label: 'Device ID', type: 'string', required: true },
+      { name: 'label', label: 'Label', type: 'string' },
+      {
+        name: 'googleProfileName',
+        label: 'Shared Google profile (empty = dedicated)',
+        type: 'string',
+      },
     ],
   },
   {
@@ -82,7 +104,8 @@ const TOOLS: PlaygroundToolDef[] = [
   {
     name: 'phone_sync_conversations',
     title: 'Sync conversations',
-    description: 'Scrape Google Messages inbox and save conversations.',
+    description:
+      'Refresh the inbox index only (titles + last-message previews). Use phone_get_messages for a full thread.',
     category: 'inbox',
     helperName: 'syncPhoneConversations',
     fields: [
@@ -90,33 +113,51 @@ const TOOLS: PlaygroundToolDef[] = [
     ],
   },
   {
+    name: 'phone_get_messages',
+    title: 'Get messages for a phone number',
+    description:
+      'Open that conversation in Messages Web and return the full thread, not just the inbox preview.',
+    category: 'inbox',
+    helperName: 'getPhoneMessages',
+    fields: [
+      { name: 'deviceId', label: 'Device ID', type: 'string', required: true },
+      {
+        name: 'phoneNumber',
+        label: 'Phone number',
+        type: 'string',
+        required: true,
+        placeholder: '010-1234-5678',
+      },
+    ],
+  },
+  {
     name: 'phone_list_conversation_messages',
     title: 'List thread messages (cache)',
-    description: 'Cached bubbles for one conversation (UI chrome stripped).',
+    description: 'Cached full-thread bubbles. Prefer phone_get_messages for a number.',
     category: 'inbox',
     helperName: 'listPhoneConversationMessages',
     fields: [
       { name: 'deviceId', label: 'Device ID', type: 'string', required: true },
-      { name: 'convKey', label: 'Conversation key', type: 'string', required: true },
+      { name: 'convKey', label: 'Conversation key', type: 'string' },
+      { name: 'phoneNumber', label: 'Phone number', type: 'string' },
     ],
   },
   {
     name: 'phone_sync_conversation_thread',
     title: 'Sync conversation thread',
     description:
-      'Open a thread in Messages Web by title, scrape bubbles, and save.',
+      'Alias of phone_get_messages. Accepts phoneNumber or convKey+title.',
     category: 'inbox',
     helperName: 'syncPhoneConversationThread',
     fields: [
       { name: 'deviceId', label: 'Device ID', type: 'string', required: true },
-      { name: 'convKey', label: 'Conversation key', type: 'string', required: true },
+      { name: 'phoneNumber', label: 'Phone number', type: 'string' },
+      { name: 'convKey', label: 'Conversation key', type: 'string' },
       {
         name: 'title',
         label: 'Inbox title',
         type: 'string',
-        required: true,
         placeholder: '010-1234-5678',
-        hint: 'Exact conversation title as shown in the inbox list.',
       },
     ],
   },
@@ -142,7 +183,7 @@ const TOOLS: PlaygroundToolDef[] = [
   },
   {
     name: 'phone_send',
-    title: 'Send / enqueue SMS',
+    title: 'Send SMS',
     description:
       'Enqueue an SMS (immediate or scheduled). Marketing mode wraps (광고) + 무료수신거부 when snapshotId is set.',
     category: 'send',
@@ -169,6 +210,44 @@ const TOOLS: PlaygroundToolDef[] = [
         type: 'string',
         placeholder: 'Business identity snapshot id',
       },
+      {
+        name: 'isMarketing',
+        label: 'Marketing SMS',
+        type: 'boolean',
+        defaultValue: true,
+      },
+      { name: 'brandName', label: 'Brand name', type: 'string' },
+      {
+        name: 'scheduledAt',
+        label: 'Schedule (unix ms)',
+        type: 'number',
+        placeholder: 'Leave empty for now',
+      },
+    ],
+  },
+  {
+    name: 'phone_enqueue',
+    title: 'Enqueue SMS',
+    description: 'Alias of phone_send — enqueue a job for the background worker.',
+    category: 'send',
+    helperName: 'enqueuePhoneSms',
+    fields: [
+      { name: 'deviceId', label: 'Device ID', type: 'string', required: true },
+      {
+        name: 'phoneNumber',
+        label: 'To (phone)',
+        type: 'string',
+        required: true,
+        placeholder: '01012345678',
+      },
+      {
+        name: 'message',
+        label: 'Message',
+        type: 'textarea',
+        required: true,
+        placeholder: 'Hello from EGDesk…',
+      },
+      { name: 'snapshotId', label: 'Snapshot ID (marketing)', type: 'string' },
       {
         name: 'isMarketing',
         label: 'Marketing SMS',
@@ -224,6 +303,24 @@ const TOOLS: PlaygroundToolDef[] = [
     helperName: 'listPhoneDevicesForSnapshot',
     fields: [
       { name: 'snapshotId', label: 'Snapshot ID', type: 'string', required: true },
+    ],
+  },
+  {
+    name: 'phone_list_snapshot_links',
+    title: 'All snapshot links',
+    description: 'Every phone device ↔ business identity link.',
+    category: 'consent',
+    helperName: 'listPhoneSnapshotLinks',
+    fields: [],
+  },
+  {
+    name: 'phone_list_snapshots_for_device',
+    title: 'Snapshots for device',
+    description: 'Business identity snapshots attached to a phone device.',
+    category: 'consent',
+    helperName: 'listPhoneSnapshotsForDevice',
+    fields: [
+      { name: 'deviceId', label: 'Device ID', type: 'string', required: true },
     ],
   },
   {
@@ -285,6 +382,146 @@ const TOOLS: PlaygroundToolDef[] = [
       { name: 'snapshotId', label: 'Snapshot ID', type: 'string', required: true },
     ],
   },
+  {
+    name: 'phone_consent_action_set',
+    title: 'Set consent action',
+    description: 'Manually opt a phone number in or out of marketing SMS.',
+    category: 'consent',
+    helperName: 'setPhoneConsentAction',
+    fields: [
+      { name: 'snapshotId', label: 'Snapshot ID', type: 'string', required: true },
+      { name: 'phone', label: 'Phone number', type: 'string', required: true },
+      {
+        name: 'action',
+        label: 'Action',
+        type: 'string',
+        required: true,
+        placeholder: 'opt_in | opt_out',
+      },
+    ],
+  },
+  {
+    name: 'phone_rule_create',
+    title: 'Create message rule',
+    description:
+      'Match incoming/outgoing SMS and run script, send_sms, or webhook. Arms the background listener.',
+    category: 'rules',
+    helperName: 'createPhoneMessageRule',
+    fields: [
+      { name: 'deviceId', label: 'Device ID', type: 'string', required: true },
+      {
+        name: 'actionType',
+        label: 'Action type',
+        type: 'string',
+        required: true,
+        placeholder: 'script | send_sms | webhook',
+      },
+      {
+        name: 'actionPayload',
+        label: 'Action payload (JSON)',
+        type: 'json',
+        required: true,
+        placeholder: '{"url":"https://…"}',
+      },
+      { name: 'matchPhone', label: 'Match phone', type: 'string' },
+      { name: 'matchBodyContains', label: 'Body contains', type: 'string' },
+      { name: 'matchBodyRegex', label: 'Body regex', type: 'string' },
+      {
+        name: 'matchDirection',
+        label: 'Direction',
+        type: 'string',
+        placeholder: 'incoming | outgoing | any',
+      },
+      { name: 'enabled', label: 'Enabled', type: 'boolean', defaultValue: true },
+      { name: 'cooldownMs', label: 'Cooldown (ms)', type: 'number' },
+    ],
+  },
+  {
+    name: 'phone_rule_update',
+    title: 'Update message rule',
+    description: 'Update match criteria, action, or enabled flag.',
+    category: 'rules',
+    helperName: 'updatePhoneMessageRule',
+    fields: [
+      { name: 'ruleId', label: 'Rule ID', type: 'string', required: true },
+      { name: 'enabled', label: 'Enabled', type: 'boolean' },
+      { name: 'matchPhone', label: 'Match phone', type: 'string' },
+      { name: 'matchBodyContains', label: 'Body contains', type: 'string' },
+      { name: 'matchBodyRegex', label: 'Body regex', type: 'string' },
+      {
+        name: 'matchDirection',
+        label: 'Direction',
+        type: 'string',
+        placeholder: 'incoming | outgoing | any',
+      },
+      {
+        name: 'actionType',
+        label: 'Action type',
+        type: 'string',
+        placeholder: 'script | send_sms | webhook',
+      },
+      {
+        name: 'actionPayload',
+        label: 'Action payload (JSON)',
+        type: 'json',
+        placeholder: '{"url":"https://…"}',
+      },
+      { name: 'cooldownMs', label: 'Cooldown (ms)', type: 'number' },
+    ],
+  },
+  {
+    name: 'phone_rule_delete',
+    title: 'Delete message rule',
+    description: 'Remove an inbound/outbound SMS rule.',
+    category: 'rules',
+    helperName: 'deletePhoneMessageRule',
+    fields: [
+      { name: 'ruleId', label: 'Rule ID', type: 'string', required: true },
+    ],
+  },
+  {
+    name: 'phone_rule_list',
+    title: 'List message rules',
+    description: 'List rules for one device or all devices.',
+    category: 'rules',
+    helperName: 'listPhoneMessageRules',
+    fields: [{ name: 'deviceId', label: 'Device ID (optional)', type: 'string' }],
+  },
+  {
+    name: 'phone_listener_status',
+    title: 'Listener status',
+    description: 'Poll interval, armed devices, last poll/event times.',
+    category: 'listener',
+    helperName: 'getPhoneListenerStatus',
+    fields: [{ name: 'deviceId', label: 'Device ID (optional)', type: 'string' }],
+  },
+  {
+    name: 'phone_listener_test',
+    title: 'Test listener match',
+    description: 'Dry-run rule matching against a sample message (dryRun defaults true).',
+    category: 'listener',
+    helperName: 'testPhoneListener',
+    fields: [
+      { name: 'deviceId', label: 'Device ID', type: 'string', required: true },
+      {
+        name: 'body',
+        label: 'Message body',
+        type: 'textarea',
+        required: true,
+        placeholder: 'Sample SMS text…',
+      },
+      { name: 'phone', label: 'Phone number', type: 'string' },
+      {
+        name: 'direction',
+        label: 'Direction',
+        type: 'string',
+        placeholder: 'incoming | outgoing | unknown',
+      },
+      { name: 'convKey', label: 'Conversation key', type: 'string' },
+      { name: 'title', label: 'Inbox title', type: 'string' },
+      { name: 'dryRun', label: 'Dry run', type: 'boolean', defaultValue: true },
+    ],
+  },
 ];
 
 const CATEGORIES = [
@@ -293,6 +530,8 @@ const CATEGORIES = [
   { key: 'contacts', label: 'Contacts' },
   { key: 'send', label: 'Send queue' },
   { key: 'consent', label: 'Consent / marketing' },
+  { key: 'rules', label: 'Message rules' },
+  { key: 'listener', label: 'Listener' },
 ];
 
 const RUNNING_HINTS: Record<string, string> = {

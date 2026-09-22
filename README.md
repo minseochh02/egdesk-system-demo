@@ -7,7 +7,8 @@ A minimal Next.js app showing how EGDesk database integration works end-to-end.
 | File | What it shows |
 |---|---|
 | `app/page.tsx` | Client page that fetches & displays EGDesk table data |
-| `app/visitor-auth/page.tsx` | Brokered visitor Google login test (hosted site ↔ EGDesk Auth) |
+| `app/visitor-auth/page.tsx` | Brokered visitor Google login test (path-based OAuth bounce + opaque session) |
+| `app/auth/callback/page.tsx` | Exchanges EGDesk one-time login code for visitor session id |
 | `app/drive-mcp/page.tsx` | Drive poll/download and upload (local ↔ Workspace) |
 | `app/sheets-mcp/page.tsx` | My DB ↔ Google Sheets HTTP sync (`toWorkspace` / `toLocal`) |
 | `app/gmail-mcp/page.tsx` | Gmail fetch + send |
@@ -29,6 +30,20 @@ These files are created/updated automatically by EGDesk when you import data or 
 | `.env.production.local` | Prod EGDesk server URL + project ID |
 
 Site-owned (never overwritten): `egdesk.visitor-auth.ts` — default visitor Google scopes (`basic` or `workspace`). Login UI lives in your pages.
+
+### Visitor Google login flow
+
+1. Site calls `startVisitorGoogleLogin()` → EGDesk starts Google OAuth with a unique bounce URL: `{MCP root}/visitor-auth/callback/{pendingId}`
+2. Google redirects to EGDesk → EGDesk redirects back to the site at `/auth/callback?code=…`
+3. `app/auth/callback/page.tsx` exchanges the code for an opaque session id (stored in `localStorage`)
+4. Visitor Drive/Sheets calls use `Authorization: Bearer {sessionId}` via `__visitor_google_proxy`
+
+Add to Supabase Auth redirect allowlist (once per EGDesk/tunnel origin):
+
+- `http://localhost:54321/visitor-auth/callback/**`
+- `https://tunneling-service.onrender.com/**`
+
+On published hosts, set `NEXT_PUBLIC_EGDESK_API_URL` to the tunnel MCP root (`https://…/t/{id}`), not `http://localhost:8080`.
 
 ## Getting started with EGDesk
 

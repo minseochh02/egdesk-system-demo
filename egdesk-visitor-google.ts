@@ -74,9 +74,33 @@ async function parseEgdeskJson(response: Response): Promise<any> {
   return result;
 }
 
+function originFromValue(value?: string | null): string | null {
+  const raw = (value || '').trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    try {
+      return new URL(`https://${raw}`).origin;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function resolveVisitorSiteOrigin(): string | null {
+  if (typeof window !== 'undefined') return window.location.origin;
+  const fromEnv =
+    (typeof process !== 'undefined' &&
+      (process.env?.NEXT_PUBLIC_EGDESK_VISITOR_ORIGIN || process.env?.NEXT_PUBLIC_SITE_URL)) ||
+    '';
+  return originFromValue(fromEnv);
+}
+
 function visitorOriginHeaders(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  return { 'X-Visitor-Origin': window.location.origin };
+  const origin = resolveVisitorSiteOrigin();
+  if (!origin) return {};
+  return { Origin: origin, 'X-Visitor-Origin': origin };
 }
 
 /** Tunnel production apps live under /t/{id}/p/{project}. Bare /auth/callback 404s. */
@@ -100,20 +124,53 @@ export function resolveVisitorAppPath(path: string): string {
   return `${base}${normalized}`;
 }
 
-/** MCP root for the public tunnel, e.g. https://tunneling-service.onrender.com/t/vicky-cha4 */
+function isLocalHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+}
+
+function isLocalEgdeskUrl(value: string): boolean {
+  try {
+    return isLocalHostname(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * MCP root used as the Google/Supabase OAuth bounce.
+ * Published hosts must never silently fall back to http://localhost:8080.
+ */
 export function resolveEgdeskPublicUrl(): string {
-  const configured =
+  const configured = (
     (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_EGDESK_API_URL) ||
-    'http://localhost:8080';
-  if (typeof window === 'undefined') return configured;
+    ''
+  ).replace(/\/$/, '');
+  if (typeof window === 'undefined') {
+    return configured || 'http://localhost:8080';
+  }
+
+  const hostname = window.location.hostname;
   const parts = window.location.pathname.split('/').filter(Boolean);
-  const onTunnelGateway =
-    window.location.hostname === 'tunneling-service.onrender.com' ||
-    window.location.hostname.endsWith('.egdesk.cloud');
-  if (onTunnelGateway && parts[0] === 't' && parts[1]) {
+  const onTunnelPath = parts[0] === 't' && Boolean(parts[1]);
+  const onKnownGateway =
+    hostname === 'tunneling-service.onrender.com' || hostname.endsWith('.egdesk.cloud');
+
+  if (onTunnelPath && (onKnownGateway || !isLocalHostname(hostname))) {
     return `${window.location.origin}/t/${parts[1]}`;
   }
-  return configured;
+
+  if (isLocalHostname(hostname)) {
+    return configured || 'http://localhost:8080';
+  }
+
+  if (configured && !isLocalEgdeskUrl(configured)) {
+    return configured;
+  }
+
+  console.error(
+    '[egdesk-visitor-google] NEXT_PUBLIC_EGDESK_API_URL is missing or points at localhost on a published host. Using window.location.origin for the OAuth bounce.',
+  );
+  return window.location.origin;
 }
 
 async function callVisitorAuth(tool: string, args: Record<string, unknown> = {}) {
@@ -162,8 +219,14 @@ export async function startVisitorGoogleLogin(options: {
   );
   const returnTo = new URL(resolveVisitorAppPath('/auth/callback'), window.location.origin);
   returnTo.searchParams.set('next', next);
-  // Localhost → EGDesk :54321. Tunnel site → {gateway}/t/{id}/visitor-auth/callback.
+  // Localhost → EGDesk :54321/visitor-auth/callback/{pendingId}.
+  // Tunnel / custom domain → {MCP root}/visitor-auth/callback/{pendingId}.
   const egdeskPublicUrl = resolveEgdeskPublicUrl();
+  if (isLocalEgdeskUrl(egdeskPublicUrl) && !isLocalHostname(window.location.hostname)) {
+    throw new Error(
+      'Visitor Google login cannot use a localhost EGDesk URL from a published site. Set NEXT_PUBLIC_EGDESK_API_URL to the tunnel MCP root (https://…/t/{id}).',
+    );
+  }
   const scopes = resolveVisitorLoginScopes(options.scopes);
 
   const result = await callVisitorAuth('start', {
