@@ -40,7 +40,7 @@ Site-owned (never overwritten): `egdesk.visitor-auth.ts` — default visitor Goo
 
 Add to Supabase Auth redirect allowlist (once per EGDesk/tunnel origin):
 
-- `http://localhost:54321/visitor-auth/callback/**`
+- `http://localhost:54321/auth/callback` (exact — localhost visitor and owner)
 - `https://tunneling-service.onrender.com/**`
 
 On published hosts, set `NEXT_PUBLIC_EGDESK_API_URL` to the tunnel MCP root (`https://…/t/{id}`), not `http://localhost:8080`.

@@ -433,13 +433,14 @@ export default function VisitorAuthDemoPage() {
         <ul style={listStyle}>
           <li>EGDesk HTTP server running with visitor auth enabled.</li>
           <li>
-            Local hosted coding returns through{' '}
-            <code style={codeStyle}>http://localhost:54321/visitor-auth/callback/{'{pendingId}'}</code>, then back to this origin.
+            Local hosted coding returns through the allowlisted{' '}
+            <code style={codeStyle}>http://localhost:54321/auth/callback</code>, then back to this origin.
+            A different local path makes Supabase fall back to egdesk.cloud.
             The public tunnel uses{' '}
             <code style={codeStyle}>
               https://tunneling-service.onrender.com/t/{'{id}'}/visitor-auth/callback/{'{pendingId}'}
             </code>{' '}
-            (allowlist <code style={codeStyle}>http://localhost:54321/visitor-auth/callback/**</code> and{' '}
+            (allowlist the exact local URL above and{' '}
             <code style={codeStyle}>https://tunneling-service.onrender.com/**</code>
             ) and then returns to{' '}
             <code style={codeStyle}>/t/{'{id}'}/p/{'{project}'}/auth/callback</code>.

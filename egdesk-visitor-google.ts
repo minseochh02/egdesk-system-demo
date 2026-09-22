@@ -219,7 +219,7 @@ export async function startVisitorGoogleLogin(options: {
   );
   const returnTo = new URL(resolveVisitorAppPath('/auth/callback'), window.location.origin);
   returnTo.searchParams.set('next', next);
-  // Localhost → EGDesk :54321/visitor-auth/callback/{pendingId}.
+  // Localhost → allowlisted http://localhost:54321/auth/callback.
   // Tunnel / custom domain → {MCP root}/visitor-auth/callback/{pendingId}.
   const egdeskPublicUrl = resolveEgdeskPublicUrl();
   if (isLocalEgdeskUrl(egdeskPublicUrl) && !isLocalHostname(window.location.hostname)) {
