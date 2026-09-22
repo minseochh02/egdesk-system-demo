@@ -60,7 +60,7 @@ export default function VisitorAuthDemoPage() {
       id: 'start',
       title: '1. startVisitorGoogleLogin()',
       description:
-        'Hosted site asks EGDesk to start Google OAuth. Each login gets its own /visitor-auth/callback/{pendingId} bounce URL.',
+        'Hosted site asks EGDesk to start Google OAuth. Loopback uses :54321/auth/callback; LAN/tunnel uses /visitor-auth/callback/{pendingId}.',
       state: 'idle',
     },
     {
@@ -259,9 +259,13 @@ export default function VisitorAuthDemoPage() {
         <h1 style={titleStyle}>Visitor Google login test</h1>
         <p style={introStyle}>
           This page exercises the brokered login flow: the hosted Next.js site never receives Supabase keys.
-          Google bounces through EGDesk at <code style={codeStyle}>/visitor-auth/callback/{'{pendingId}'}</code>,
-          then this site receives a one-time code and stores an opaque session id bound to{' '}
-          <strong>this origin</strong>.
+          On <strong>localhost / 127.0.0.1</strong>, Google bounces via the allowlisted{' '}
+          <code style={codeStyle}>http://localhost:54321/auth/callback</code>. On{' '}
+          <strong>LAN IP or tunnel</strong>, Google bounces through{' '}
+          <code style={codeStyle}>/visitor-auth/callback/{'{pendingId}'}</code> on the MCP root.
+          This site then receives a one-time code and stores an opaque session id bound to{' '}
+          <strong>this origin</strong> (prod :3000 uses basePath{' '}
+          <code style={codeStyle}>/t/{'{id}'}/p/{'{project}'}</code>).
         </p>
         <nav style={navStyle} aria-label="Demo navigation">
           {navLinks.map((link) => (
@@ -433,17 +437,16 @@ export default function VisitorAuthDemoPage() {
         <ul style={listStyle}>
           <li>EGDesk HTTP server running with visitor auth enabled.</li>
           <li>
-            Local hosted coding returns through the allowlisted{' '}
-            <code style={codeStyle}>http://localhost:54321/auth/callback</code>, then back to this origin.
-            A different local path makes Supabase fall back to egdesk.cloud.
-            The public tunnel uses{' '}
+            <strong>Loopback</strong> (localhost / 127.0.0.1 on :4000 or :3000): Google bounces via{' '}
+            <code style={codeStyle}>http://localhost:54321/auth/callback</code> (exact allowlist entry).
+            <strong> LAN IP</strong> (192.168.x.x from phone/other device): requires tunnel env in{' '}
+            <code style={codeStyle}>.env.local</code>; Google bounces via{' '}
             <code style={codeStyle}>
               https://tunneling-service.onrender.com/t/{'{id}'}/visitor-auth/callback/{'{pendingId}'}
-            </code>{' '}
-            (allowlist the exact local URL above and{' '}
-            <code style={codeStyle}>https://tunneling-service.onrender.com/**</code>
-            ) and then returns to{' '}
-            <code style={codeStyle}>/t/{'{id}'}/p/{'{project}'}/auth/callback</code>.
+            </code>
+            . Allowlist that URL pattern and{' '}
+            <code style={codeStyle}>https://tunneling-service.onrender.com/**</code>. Prod :3000 uses basePath{' '}
+            <code style={codeStyle}>/t/{'{id}'}/p/{'{project}'}/auth/callback</code> as returnTo.
           </li>
           <li>
             This demo uses <code style={codeStyle}>app/auth/callback/page.tsx</code> to exchange the one-time code.

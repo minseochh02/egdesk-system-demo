@@ -33,17 +33,28 @@ Site-owned (never overwritten): `egdesk.visitor-auth.ts` — default visitor Goo
 
 ### Visitor Google login flow
 
-1. Site calls `startVisitorGoogleLogin()` → EGDesk starts Google OAuth with a unique bounce URL: `{MCP root}/visitor-auth/callback/{pendingId}`
-2. Google redirects to EGDesk → EGDesk redirects back to the site at `/auth/callback?code=…`
+1. Site calls `startVisitorGoogleLogin()` → EGDesk starts Google OAuth; bounce URL depends on site type (see table below)
+2. Google redirects through EGDesk → site receives `/auth/callback?code=…`
 3. `app/auth/callback/page.tsx` exchanges the code for an opaque session id (stored in `localStorage`)
 4. Visitor Drive/Sheets calls use `Authorization: Bearer {sessionId}` via `__visitor_google_proxy`
 
+#### OAuth bounce by site type
+
+| Where you open the site | Google redirectTo |
+|-------------------------|-------------------|
+| `localhost` / `127.0.0.1` (:4000 dev, :3000 prod) | `http://localhost:54321/auth/callback` |
+| LAN IP (`192.168.x.x`) + tunnel in `.env.local` | `{tunnel}/visitor-auth/callback/{pendingId}` |
+| LAN IP, no tunnel (same PC only) | `http://localhost:54321/auth/callback` |
+| Tunnel URL or custom domain | `{MCP root}/visitor-auth/callback/{pendingId}` |
+
+Prod hosted coding (`:3000`) uses basePath — open e.g. `http://localhost:3000/t/{id}/p/egdesk-system-demo/visitor-auth`.
+
 Add to Supabase Auth redirect allowlist (once per EGDesk/tunnel origin):
 
-- `http://localhost:54321/auth/callback` (exact — localhost visitor and owner)
+- `http://localhost:54321/auth/callback` (exact — loopback visitor and owner)
 - `https://tunneling-service.onrender.com/**`
 
-On published hosts, set `NEXT_PUBLIC_EGDESK_API_URL` to the tunnel MCP root (`https://…/t/{id}`), not `http://localhost:8080`.
+Set `NEXT_PUBLIC_EGDESK_API_URL` to the tunnel MCP root (`https://…/t/{id}`) for tunnel/LAN testing. EGDesk also injects this at prod build/start when a tunnel is active.
 
 ## Getting started with EGDesk
 
