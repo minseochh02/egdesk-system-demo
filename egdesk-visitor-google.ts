@@ -124,13 +124,41 @@ export function resolveVisitorAppPath(path: string): string {
   return `${base}${normalized}`;
 }
 
-function isLocalHostname(hostname: string): boolean {
+function isLoopbackHostname(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+}
+
+function isPrivateLanHostname(hostname: string): boolean {
+  const match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!match) return false;
+  const a = Number(match[1]);
+  const b = Number(match[2]);
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
+}
+
+function isDevSiteHostname(hostname: string): boolean {
+  return isLoopbackHostname(hostname) || isPrivateLanHostname(hostname);
 }
 
 function isLocalEgdeskUrl(value: string): boolean {
   try {
-    return isLocalHostname(new URL(value).hostname);
+    return isLoopbackHostname(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isTunnelMcpRoot(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      parsed.hostname === 'tunneling-service.onrender.com' ||
+      parsed.hostname.endsWith('.egdesk.cloud') ||
+      /\/t\/[^/]+/.test(parsed.pathname)
+    );
   } catch {
     return false;
   }
@@ -145,8 +173,14 @@ export function resolveEgdeskPublicUrl(): string {
     (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_EGDESK_API_URL) ||
     ''
   ).replace(/\/$/, '');
+  const tunnelUrl = (
+    (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_EGDESK_TUNNEL_URL) ||
+    ''
+  ).replace(/\/$/, '');
+  const preferred = configured || tunnelUrl;
+
   if (typeof window === 'undefined') {
-    return configured || 'http://localhost:8080';
+    return preferred || 'http://localhost:8080';
   }
 
   const hostname = window.location.hostname;
@@ -155,16 +189,27 @@ export function resolveEgdeskPublicUrl(): string {
   const onKnownGateway =
     hostname === 'tunneling-service.onrender.com' || hostname.endsWith('.egdesk.cloud');
 
-  if (onTunnelPath && (onKnownGateway || !isLocalHostname(hostname))) {
+  if (onTunnelPath && (onKnownGateway || !isLoopbackHostname(hostname))) {
     return `${window.location.origin}/t/${parts[1]}`;
   }
 
-  if (isLocalHostname(hostname)) {
-    return configured || 'http://localhost:8080';
+  if (isDevSiteHostname(hostname)) {
+    if (isPrivateLanHostname(hostname) && preferred && isTunnelMcpRoot(preferred)) {
+      return preferred;
+    }
+    if (isLoopbackHostname(hostname)) {
+      return preferred || 'http://localhost:8080';
+    }
+    if (preferred && !isLocalEgdeskUrl(preferred)) {
+      return preferred;
+    }
+    throw new Error(
+      'Visitor Google login from a LAN IP requires NEXT_PUBLIC_EGDESK_API_URL to be the tunnel MCP root (https://…/t/{id}).',
+    );
   }
 
-  if (configured && !isLocalEgdeskUrl(configured)) {
-    return configured;
+  if (preferred && !isLocalEgdeskUrl(preferred)) {
+    return preferred;
   }
 
   console.error(
@@ -222,7 +267,7 @@ export async function startVisitorGoogleLogin(options: {
   // Localhost → allowlisted http://localhost:54321/auth/callback.
   // Tunnel / custom domain → {MCP root}/visitor-auth/callback/{pendingId}.
   const egdeskPublicUrl = resolveEgdeskPublicUrl();
-  if (isLocalEgdeskUrl(egdeskPublicUrl) && !isLocalHostname(window.location.hostname)) {
+  if (isLocalEgdeskUrl(egdeskPublicUrl) && !isDevSiteHostname(window.location.hostname)) {
     throw new Error(
       'Visitor Google login cannot use a localhost EGDesk URL from a published site. Set NEXT_PUBLIC_EGDESK_API_URL to the tunnel MCP root (https://…/t/{id}).',
     );
