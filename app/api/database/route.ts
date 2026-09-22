@@ -47,7 +47,9 @@ async function runHelper(helper: string, args: HelperArgs) {
       return insertRows(args.tableName, args.rows);
 
     case 'updateRows':
-      return updateRows(args.tableName, args.updates, {
+      return callUserDataTool('user_data_update_rows', {
+        tableName: args.tableName,
+        updates: args.updates,
         ids: args.ids,
         filters: args.filters,
         expectedVersion: args.expectedVersion,

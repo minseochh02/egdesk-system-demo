@@ -358,8 +358,9 @@ export default function UserDataQueueMcpPage() {
 
   return (
     <McpPlayground
+      eyebrow="EGDesk MCP"
       title="UserData Queue MCP"
-      description="Durable enqueue + worker with retries for sync configs, browser recordings, backups, and user scripts."
+      subtitle="Durable enqueue + worker with retries for sync configs, browser recordings, backups, and user scripts."
       currentHref="/user-data-queue-mcp"
       tools={TOOLS}
       categories={CATEGORIES}

@@ -26,7 +26,7 @@ const FOLDER_TOOLS = new Set(['drive_init', 'drive_set_target_folders']);
  * - https://drive.google.com/open?id=ID
  * - bare folder id
  */
-export function extractDriveFolderId(input: string): string | null {
+function extractDriveFolderId(input: string): string | null {
   const raw = input.trim();
   if (!raw) return null;
 

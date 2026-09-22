@@ -64,7 +64,7 @@ export type McpPlaygroundProps = {
   renderDisplay?: (data: any, tool: string) => React.ReactNode;
   onResult?: (tool: string, parsed: any) => void;
   buildExtraArgs?: () => Record<string, any>;
-  getDefaultFieldValues?: (tool: PlaygroundToolDef) => Record<string, string>;
+  getDefaultFieldValues?: (tool: PlaygroundToolDef) => Partial<Record<string, string>>;
   fileUploadApiPath?: string;
   validateBeforeRun?: (
     tool: PlaygroundToolDef,
@@ -294,8 +294,10 @@ export function McpPlayground({
         defaults[field.name] = String(field.defaultValue);
       }
     }
-    const custom = getDefaultFieldValues?.(selectedTool) ?? {};
-    setFieldValues({ ...defaults, ...custom });
+    const customEntries = Object.entries(getDefaultFieldValues?.(selectedTool) ?? {}).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    );
+    setFieldValues({ ...defaults, ...Object.fromEntries(customEntries) });
     setFilePayloads({});
     setFileReading({});
     setFileErrors({});

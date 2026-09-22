@@ -1,112 +1,163 @@
 'use client';
 
-import { useState } from 'react';
-import PlaygroundPage from '@/components/PlaygroundPage';
-import ToolCard from '@/components/ToolCard';
+import {
+  McpPlayground,
+  type PlaygroundToolDef,
+} from '@/components/mcp-playground';
+
+const TOOLS: PlaygroundToolDef[] = [
+  {
+    name: 'bi_list_snapshots',
+    title: 'List snapshots',
+    description: 'List all business identity snapshots.',
+    category: 'snapshots',
+    fields: [
+      {
+        name: 'brandKey',
+        label: 'Brand key (optional)',
+        type: 'string',
+        placeholder: 'egdesk',
+      },
+    ],
+  },
+  {
+    name: 'bi_get_snapshot',
+    title: 'Get snapshot',
+    description: 'Get full identity data for a snapshot.',
+    category: 'snapshots',
+    fields: [
+      {
+        name: 'snapshotId',
+        label: 'Snapshot ID',
+        type: 'string',
+        required: true,
+        placeholder: 'from bi_list_snapshots',
+      },
+    ],
+  },
+  {
+    name: 'bi_get_company_info',
+    title: 'Company info',
+    description: 'Extract company info slice from a snapshot.',
+    category: 'snapshots',
+    fields: [
+      {
+        name: 'snapshotId',
+        label: 'Snapshot ID',
+        type: 'string',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: 'bi_catalog_list_products',
+    title: 'List products',
+    description: 'List managed products for a snapshot.',
+    category: 'catalog',
+    fields: [
+      {
+        name: 'snapshotId',
+        label: 'Snapshot ID',
+        type: 'string',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: 'bi_catalog_register_product',
+    title: 'Register product',
+    description: 'Register or update a product in the catalog.',
+    category: 'catalog',
+    fields: [
+      {
+        name: 'snapshotId',
+        label: 'Snapshot ID',
+        type: 'string',
+        required: true,
+      },
+      {
+        name: 'name',
+        label: 'Product name',
+        type: 'string',
+        required: true,
+        defaultValue: 'Sample Product',
+      },
+      {
+        name: 'description',
+        label: 'Description',
+        type: 'textarea',
+        defaultValue: 'Product description here',
+      },
+      {
+        name: 'toneVoice',
+        label: 'Tone / voice',
+        type: 'string',
+        defaultValue: 'Professional',
+      },
+      {
+        name: 'category',
+        label: 'Category',
+        type: 'string',
+        defaultValue: 'Software',
+      },
+    ],
+  },
+  {
+    name: 'bi_face_list',
+    title: 'List brand faces',
+    description: 'List AI brand faces for a snapshot.',
+    category: 'brand-face',
+    fields: [
+      {
+        name: 'snapshotId',
+        label: 'Snapshot ID',
+        type: 'string',
+        required: true,
+      },
+    ],
+  },
+  {
+    name: 'bi_face_generate',
+    title: 'Generate brand face',
+    description: 'Generate a new AI brand face.',
+    category: 'brand-face',
+    fields: [
+      {
+        name: 'snapshotId',
+        label: 'Snapshot ID',
+        type: 'string',
+        required: true,
+      },
+      {
+        name: 'styleNotes',
+        label: 'Style notes',
+        type: 'textarea',
+        defaultValue: 'Professional female founder, minimalist background',
+      },
+      {
+        name: 'roleHint',
+        label: 'Role hint',
+        type: 'string',
+        defaultValue: 'CEO',
+      },
+    ],
+  },
+];
 
 export default function BusinessIdentityMCPPage() {
-  const [snapshotId, setSnapshotId] = useState('');
-  const [brandKey, setBrandKey] = useState('');
-  const [personaId, setPersonaId] = useState('');
-  const [productId, setProductId] = useState('');
-
   return (
-    <PlaygroundPage
-      title="Business Identity MCP"
-      description="Manage brand identity snapshots, product catalogs, and AI brand faces / spokespersons."
+    <McpPlayground
       currentHref="/business-identity-mcp"
+      eyebrow="EGDesk MCP"
+      title="Business Identity MCP"
+      subtitle="Manage brand identity snapshots, product catalogs, and AI brand faces / spokespersons."
       apiPath="/api/business-identity"
-    >
-      <div className="space-y-6">
-        <section>
-          <h2 className="text-xl font-bold mb-4">Common Context</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Snapshot ID</label>
-              <input
-                type="text"
-                value={snapshotId}
-                onChange={(e) => setSnapshotId(e.target.value)}
-                placeholder="e.g. b2f3... (from bi_list_snapshots)"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Brand Key</label>
-              <input
-                type="text"
-                value={brandKey}
-                onChange={(e) => setBrandKey(e.target.value)}
-                placeholder="e.g. egdesk"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold">Snapshots</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <ToolCard
-              title="bi_list_snapshots"
-              description="List all business identity snapshots."
-              arguments={{ brandKey }}
-            />
-            <ToolCard
-              title="bi_get_snapshot"
-              description="Get full identity data for a snapshot."
-              arguments={{ snapshotId }}
-            />
-            <ToolCard
-              title="bi_get_company_info"
-              description="Extract company info slice."
-              arguments={{ snapshotId }}
-            />
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold">Product Catalog</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <ToolCard
-              title="bi_catalog_list_products"
-              description="List managed products for a snapshot."
-              arguments={{ snapshotId }}
-            />
-            <ToolCard
-              title="bi_catalog_register_product"
-              description="Register or update a product."
-              arguments={{
-                snapshotId,
-                name: 'Sample Product',
-                description: 'Product description here',
-                toneVoice: 'Professional',
-                category: 'Software'
-              }}
-            />
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold">Brand Face</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <ToolCard
-              title="bi_face_list"
-              description="List AI brand faces for a snapshot."
-              arguments={{ snapshotId }}
-            />
-            <ToolCard
-              title="bi_face_generate"
-              description="Generate a new AI brand face."
-              arguments={{
-                snapshotId,
-                styleNotes: 'Professional female founder, minimalist background',
-                roleHint: 'CEO'
-              }}
-            />
-          </div>
-        </section>
-      </div>
-    </PlaygroundPage>
+      tools={TOOLS}
+      categories={[
+        { key: 'snapshots', label: 'Snapshots' },
+        { key: 'catalog', label: 'Product catalog' },
+        { key: 'brand-face', label: 'Brand face' },
+      ]}
+    />
   );
 }

@@ -178,7 +178,7 @@ export default function BrowserRecordingPlayground() {
     if (parsed?.testFile) setSelectedTestFile(String(parsed.testFile));
   }, []);
 
-  const getDefaultFieldValues = useCallback((tool: PlaygroundToolDef) => {
+  const getDefaultFieldValues = useCallback((tool: PlaygroundToolDef): Record<string, string> => {
     if (!selectedTestFile) return {};
     if (tool.fields.some(f => f.name === 'testFile')) {
       return { testFile: selectedTestFile };

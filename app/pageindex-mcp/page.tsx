@@ -256,7 +256,7 @@ export default function PageIndexPlayground() {
       kvDescStyle,
     } = playgroundStyles;
 
-    const docs = Array.isArray(data?.documents) ? data.documents : documents;
+    const docs: IndexedDoc[] = Array.isArray(data?.documents) ? data.documents : documents;
     const showDocTable = docs.length > 0 && (
       tool === 'pageindex_list_documents'
       || tool === 'pageindex_index_document'

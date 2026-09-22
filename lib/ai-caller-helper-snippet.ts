@@ -177,7 +177,7 @@ function formatTsObject(
 function buildSnippetOptions(
   args: Record<string, unknown>,
   defaultModel = SNIPPET_DEFAULTS.model,
-): Record<string, unknown> {
+): { prompt: string; options: Record<string, unknown> } {
   const options: Record<string, unknown> = {};
   const prompt = String(args.prompt ?? '').trim();
 
