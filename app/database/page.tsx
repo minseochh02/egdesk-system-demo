@@ -417,10 +417,11 @@ export default function DatabasePlayground() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          helper: 'insertRows',
+          helper: 'insertDemoOrder',
           arguments: {
-            tableName: 'orders',
-            rows: [{ customer_name: orderName.trim(), amount: orderAmount || '0', status: orderStatus, created_at: new Date().toISOString() }],
+            customerName: orderName.trim(),
+            amount: orderAmount.trim() === '' ? '0' : orderAmount.trim(),
+            status: orderStatus,
           },
         }),
       });
@@ -574,11 +575,47 @@ export default function DatabasePlayground() {
     const table = tables.find(t => t.name === tableName);
     if (!table) return;
 
-    const demoRow: Record<string, string> = {};
     const stamp = Date.now();
-    for (const col of table.columns) {
-      if (col === 'id') continue;
-      demoRow[col] = `demo_${col}_${stamp}`;
+    const iso = new Date().toISOString();
+    let demoRow: Record<string, string | number> = {};
+
+    if (tableName === 'orders') {
+      demoRow = {
+        customer_id: 1,
+        product_id: 1,
+        quantity: 1,
+        total_price: 50000,
+        status: 'pending',
+        ordered_at: iso,
+      };
+    } else if (tableName === 'customers') {
+      demoRow = {
+        first_name: 'Minseo',
+        last_name: 'Kim',
+        email: `demo.${stamp}@example.com`,
+        phone: '010-0000-0000',
+        created_at: iso,
+      };
+    } else if (tableName === 'products') {
+      demoRow = {
+        name: `Demo widget ${stamp}`,
+        description: 'Sample product',
+        price: '19900',
+        category: 'general',
+        stock: '10',
+      };
+    } else if (tableName === 'images') {
+      demoRow = {
+        filename: `demo-${stamp}.png`,
+        mime_type: 'image/png',
+        size_bytes: 0,
+        uploaded_at: iso,
+      };
+    } else {
+      for (const col of table.columns) {
+        if (col === 'id') continue;
+        demoRow[col] = `demo_${col}_${stamp}`;
+      }
     }
 
     setField('rows', JSON.stringify([demoRow], null, 2));

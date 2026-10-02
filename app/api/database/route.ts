@@ -23,6 +23,120 @@ import {
 
 type HelperArgs = Record<string, any>;
 
+function pickRows(result: unknown): Record<string, unknown>[] {
+  if (!result || typeof result !== 'object') return [];
+  const r = result as Record<string, unknown>;
+  if (Array.isArray(r.rows)) return r.rows as Record<string, unknown>[];
+  if (Array.isArray(r.data)) return r.data as Record<string, unknown>[];
+  if (Array.isArray(result)) return result as Record<string, unknown>[];
+  return [];
+}
+
+function pickInsertId(result: unknown): number | undefined {
+  if (!result || typeof result !== 'object') return undefined;
+  const r = result as { insertedIds?: number[]; lastInsertRowid?: number };
+  const id = r.insertedIds?.[0] ?? r.lastInsertRowid;
+  return id != null ? Number(id) : undefined;
+}
+
+function parseCustomerName(fullName: string): { firstName: string; lastName: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { firstName: 'Customer', lastName: '' };
+  }
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: parts[0] };
+  }
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
+async function resolveCustomerId(customerName: string): Promise<number> {
+  const { firstName, lastName } = parseCustomerName(customerName);
+  const matches = pickRows(
+    await queryTable('customers', {
+      filters: { first_name: firstName, last_name: lastName },
+      limit: 1,
+    }),
+  );
+  const existingId = matches[0]?.id;
+  if (existingId != null) return Number(existingId);
+
+  const inserted = await insertRows('customers', [{
+    first_name: firstName,
+    last_name: lastName,
+    email: '',
+    phone: '',
+    created_at: new Date().toISOString(),
+  }]);
+  const newId = pickInsertId(inserted);
+  if (newId == null) {
+    throw new Error('Could not create customer row');
+  }
+  return newId;
+}
+
+async function resolveDefaultProductId(): Promise<number> {
+  const products = pickRows(
+    await queryTable('products', { limit: 1, orderBy: 'id', orderDirection: 'ASC' }),
+  );
+  const existingId = products[0]?.id;
+  if (existingId != null) return Number(existingId);
+
+  const inserted = await insertRows('products', [{
+    name: 'Demo product',
+    description: 'Auto-created for demo orders',
+    price: '10000',
+    category: 'general',
+    stock: '100',
+  }]);
+  const newId = pickInsertId(inserted);
+  if (newId == null) {
+    throw new Error('Could not create default product row');
+  }
+  return newId;
+}
+
+/** Real-time demo form → orders table (customer_id, product_id, total_price, …). */
+async function insertDemoOrder(args: HelperArgs) {
+  const customerName = String(args.customerName ?? '').trim();
+  if (!customerName) {
+    throw new Error('customerName is required');
+  }
+  const status = String(args.status ?? 'pending');
+  const amountRaw = args.amount;
+  const totalPrice =
+    amountRaw === undefined || amountRaw === '' || amountRaw === null
+      ? 0
+      : Number(amountRaw);
+  if (Number.isNaN(totalPrice)) {
+    throw new Error('amount must be a number');
+  }
+
+  const customerId = await resolveCustomerId(customerName);
+  const productId = await resolveDefaultProductId();
+  const orderedAt = new Date().toISOString();
+
+  const insertResult = await insertRows('orders', [{
+    customer_id: customerId,
+    product_id: productId,
+    quantity: 1,
+    total_price: totalPrice,
+    status,
+    ordered_at: orderedAt,
+  }]);
+
+  const orderId = pickInsertId(insertResult);
+  return {
+    orderId,
+    customerId,
+    productId,
+    total_price: totalPrice,
+    status,
+    ordered_at: orderedAt,
+    customerName,
+  };
+}
+
 async function runHelper(helper: string, args: HelperArgs) {
   switch (helper) {
     case 'queryTable':
@@ -45,6 +159,9 @@ async function runHelper(helper: string, args: HelperArgs) {
 
     case 'insertRows':
       return insertRows(args.tableName, args.rows);
+
+    case 'insertDemoOrder':
+      return insertDemoOrder(args);
 
     case 'updateRows':
       return callUserDataTool('user_data_update_rows', {
