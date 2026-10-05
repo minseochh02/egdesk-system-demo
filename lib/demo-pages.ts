@@ -36,6 +36,14 @@ export const DEMO_PAGES: DemoPageLink[] = [
     items: ['_version', 'expectedVersion', 'conflictDetection', 'WriteMutex'],
   },
   {
+    title: 'Upload Limit Tester',
+    description:
+      'Generate synthetic JPEGs of exact sizes and upload through the tunnel path to find 504 / size limits (1–100 MB presets).',
+    href: '/upload-limit-tester',
+    eyebrow: 'Tunnel / files',
+    items: ['uploadImage', 'user_data_upload_file', 'tunnel_timeout'],
+  },
+  {
     title: 'PageIndex MCP',
     description: 'Index PDFs into a hierarchical tree with checkpointed progress, resume interrupted jobs, and fetch page text.',
     href: '/pageindex-mcp',

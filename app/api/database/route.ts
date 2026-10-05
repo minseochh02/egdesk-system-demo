@@ -19,6 +19,7 @@ import {
   aggregateTable,
   executeSQL,
   callUserDataTool,
+  createTable,
 } from '../../../egdesk-helpers';
 
 type HelperArgs = Record<string, any>;
@@ -186,6 +187,31 @@ async function runHelper(helper: string, args: HelperArgs) {
 
     case 'executeSQL':
       return executeSQL(args.query);
+
+    case 'ensureImagesTable': {
+      const listed = await listTables();
+      const tables: Array<{ name?: string; tableName?: string }> = Array.isArray(listed?.tables)
+        ? listed.tables
+        : Array.isArray(listed)
+          ? listed
+          : [];
+      const hasImages = tables.some((t) => {
+        const n = String(t?.name || t?.tableName || t || '').toLowerCase();
+        return n === 'images';
+      });
+      if (hasImages) return { created: false, tableName: 'images' };
+      await createTable(
+        'Images',
+        [
+          { name: 'filename', type: 'TEXT' },
+          { name: 'mime_type', type: 'TEXT' },
+          { name: 'size_bytes', type: 'INTEGER' },
+          { name: 'uploaded_at', type: 'TEXT' },
+        ],
+        { tableName: 'images' },
+      );
+      return { created: true, tableName: 'images' };
+    }
 
     case 'uploadImage': {
       // 1. Insert a metadata row into the images table
