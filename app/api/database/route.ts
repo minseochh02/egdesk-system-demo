@@ -188,6 +188,16 @@ async function runHelper(helper: string, args: HelperArgs) {
     case 'executeSQL':
       return executeSQL(args.query);
 
+    case 'insertImageRow': {
+      const inserted = await insertRows('images', [{
+        filename: args.filename || 'upload.bin',
+        mime_type: args.mimeType || 'application/octet-stream',
+        size_bytes: Number(args.sizeBytes) || 0,
+        uploaded_at: new Date().toISOString(),
+      }]);
+      return { rowId: pickInsertId(inserted) };
+    }
+
     case 'ensureImagesTable': {
       const listed = await listTables();
       const tables: Array<{ name?: string; tableName?: string }> = Array.isArray(listed?.tables)

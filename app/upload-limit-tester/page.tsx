@@ -33,6 +33,104 @@ const PRESETS: Array<{ label: string; bytes: number }> = [
   { label: '100 MB', bytes: 100 * 1024 * 1024 },
 ];
 
+/** Single-shot Base64 uploadImage is only safe below this (tunnel WS ~16 MiB). */
+const LEGACY_SINGLE_SHOT_MAX = 4 * 1024 * 1024;
+
+async function sha256Hex(buf: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function uploadChunkedJpeg(options: {
+  bytes: Uint8Array;
+  filename: string;
+  rowId: number;
+  onProgress?: (msg: string) => void;
+}): Promise<{ uploadId: string; file?: any }> {
+  const totalBytes = options.bytes.length;
+  const blob = new Blob([options.bytes.buffer.slice(
+    options.bytes.byteOffset,
+    options.bytes.byteOffset + options.bytes.byteLength,
+  )], { type: 'image/jpeg' });
+
+  const initRes = await apiFetch('/api/user/files/uploads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      filename: options.filename,
+      size: totalBytes,
+      mimeType: 'image/jpeg',
+      tableName: 'images',
+      rowId: options.rowId,
+      columnName: 'file',
+      forceStorageType: 'filesystem',
+    }),
+  });
+  const initJson = await initRes.json();
+  if (!initRes.ok || initJson.success === false) {
+    throw new Error(initJson.error || `Init failed HTTP ${initRes.status}`);
+  }
+  const uploadId = String(initJson.uploadId);
+  const chunkSize = Number(initJson.chunkSize);
+  const totalChunks = Number(initJson.totalChunks || Math.ceil(totalBytes / chunkSize));
+  options.onProgress?.(`uploadId=${uploadId} chunks=${totalChunks} chunkSize=${chunkSize}`);
+
+  for (let index = 0; index < totalChunks; index++) {
+    const start = index * chunkSize;
+    const end = Math.min(start + chunkSize, totalBytes);
+    const slice = blob.slice(start, end);
+    const buf = await slice.arrayBuffer();
+    const sha = await sha256Hex(buf);
+    let ok = false;
+    let lastErr = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await apiFetch(`/api/user/files/uploads/${uploadId}/chunks/${index}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-chunk-sha256': sha,
+        },
+        body: buf,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success !== false) {
+        ok = true;
+        options.onProgress?.(`chunk ${index + 1}/${totalChunks}`);
+        break;
+      }
+      lastErr = json.error || `HTTP ${res.status}`;
+      await new Promise((r) => setTimeout(r, [500, 1500, 4000][attempt]));
+    }
+    if (!ok) throw new Error(`Chunk ${index} failed: ${lastErr}`);
+  }
+
+  const completeRes = await apiFetch(`/api/user/files/uploads/${uploadId}/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  let completeJson = await completeRes.json();
+  if (!completeRes.ok && completeRes.status !== 202) {
+    throw new Error(completeJson.error || `Complete failed HTTP ${completeRes.status}`);
+  }
+  if (completeJson.state === 'finalizing' || completeRes.status === 202) {
+    for (let i = 0; i < 600; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const st = await apiFetch(`/api/user/files/uploads/${uploadId}`);
+      const sj = await st.json();
+      if (sj.state === 'done') {
+        completeJson = sj;
+        break;
+      }
+      if (sj.state === 'failed') throw new Error(sj.error || 'Finalization failed');
+    }
+    if (completeJson.state !== 'done') throw new Error('Timed out waiting for finalization');
+  }
+  return { uploadId, file: completeJson.file };
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -199,10 +297,9 @@ export default function UploadLimitTesterPage() {
       };
 
       patch({ status: 'generating' });
-      let base64: string;
+      let bytes: Uint8Array;
       try {
-        const bytes = makeSyntheticJpeg(plan.bytes);
-        base64 = bytesToBase64(bytes);
+        bytes = makeSyntheticJpeg(plan.bytes);
       } catch (err: any) {
         patch({
           status: 'error',
@@ -212,50 +309,86 @@ export default function UploadLimitTesterPage() {
         continue;
       }
 
+      const forceChunked = plan.bytes > LEGACY_SINGLE_SHOT_MAX;
       const startedAt = Date.now();
       patch({
         status: 'uploading',
         startedAt,
-        payloadBase64Chars: base64.length,
-        pathHint: 'Browser → /api/database (uploadImage) → server callUserDataTool → MCP',
+        payloadBase64Chars: forceChunked ? undefined : bytesToBase64(bytes).length,
+        pathHint: forceChunked
+          ? 'Browser → /api/user/files/uploads (chunked) → MCP /user-data/uploads → path ingest'
+          : 'Browser → /api/database (uploadImage Base64) → MCP',
       });
 
       try {
-        const res = await apiFetch('/api/database', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            helper: 'uploadImage',
-            arguments: {
-              filename: `limit-test-${plan.bytes}.jpg`,
-              mimeType: 'image/jpeg',
-              data: base64,
-              yoloCrop,
-            },
-          }),
-        });
-        const endedAt = Date.now();
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || !json.success) {
-          const parsed = parseErrorPayload(json, res.status);
-          patch({
-            status: 'error',
-            endedAt,
-            durationMs: endedAt - startedAt,
-            httpStatus: res.status,
-            error: parsed.message,
-            requestId: parsed.requestId,
-            retryable: parsed.retryable,
+        let rowId: number | undefined;
+        let httpStatus = 200;
+
+        if (forceChunked) {
+          const insertRes = await apiFetch('/api/database', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              helper: 'insertImageRow',
+              arguments: {
+                filename: `limit-test-${plan.bytes}.jpg`,
+                mimeType: 'image/jpeg',
+                sizeBytes: plan.bytes,
+              },
+            }),
           });
-          continue;
+          const insertJson = await insertRes.json();
+          if (!insertRes.ok || !insertJson.success) {
+            throw new Error(insertJson.error || `insertImageRow failed HTTP ${insertRes.status}`);
+          }
+          rowId = Number(insertJson.result?.rowId);
+          if (!Number.isFinite(rowId)) throw new Error('insertImageRow did not return rowId');
+
+          await uploadChunkedJpeg({
+            bytes,
+            filename: `limit-test-${plan.bytes}.jpg`,
+            rowId,
+            onProgress: (msg) => patch({ pathHint: `chunked: ${msg}` }),
+          });
+        } else {
+          const base64 = bytesToBase64(bytes);
+          const res = await apiFetch('/api/database', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              helper: 'uploadImage',
+              arguments: {
+                filename: `limit-test-${plan.bytes}.jpg`,
+                mimeType: 'image/jpeg',
+                data: base64,
+                yoloCrop,
+              },
+            }),
+          });
+          httpStatus = res.status;
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok || !json.success) {
+            const parsed = parseErrorPayload(json, res.status);
+            patch({
+              status: 'error',
+              endedAt: Date.now(),
+              durationMs: Date.now() - startedAt,
+              httpStatus: res.status,
+              error: parsed.message,
+              requestId: parsed.requestId,
+              retryable: parsed.retryable,
+            });
+            continue;
+          }
+          rowId = json.result?.rowId;
         }
 
-        const rowId = json.result?.rowId;
+        const endedAt = Date.now();
         patch({
           status: 'success',
           endedAt,
           durationMs: endedAt - startedAt,
-          httpStatus: res.status,
+          httpStatus,
           rowId,
         });
 
@@ -280,7 +413,9 @@ export default function UploadLimitTesterPage() {
           endedAt,
           durationMs: endedAt - startedAt,
           error: err?.message || String(err),
-          retryable: /timeout|504|Failed to fetch|network/i.test(String(err?.message || err)),
+          retryable: /timeout|504|502|Failed to fetch|network|retryable/i.test(
+            String(err?.message || err),
+          ),
         });
       }
     }
@@ -325,10 +460,10 @@ export default function UploadLimitTesterPage() {
         </div>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>Image upload limit tester</h1>
         <p style={{ color: '#4b5563', margin: '0.5rem 0 0', lineHeight: 1.6, fontSize: 15 }}>
-          Generates synthetic JPEGs of exact byte sizes and uploads them through{' '}
-          <code>/api/database</code> → <code>uploadImage</code> → MCP{' '}
-          <code>user_data_upload_file</code>. Use this on a <strong>prod tunnel URL</strong> to
-          verify the 504 / double-hop fix (look for ~60s failures vs success).
+          Generates synthetic JPEGs of exact byte sizes. Sizes ≤4&nbsp;MB can use the legacy Base64{' '}
+          <code>uploadImage</code> path; larger sizes use <strong>chunked upload</strong> (
+          <code>/api/user/files/uploads</code> → MCP <code>/user-data/uploads</code>) so each tunnel
+          WS frame stays small. Run on a <strong>prod tunnel URL</strong>.
         </p>
       </div>
 
@@ -420,7 +555,7 @@ export default function UploadLimitTesterPage() {
             disabled={running}
             onChange={(e) => setYoloCrop(e.target.checked)}
           />
-          Run YOLO on upload (slower — leave off for pure transfer timing)
+          Run YOLO (legacy ≤4&nbsp;MB Base64 path only; ignored for chunked uploads)
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 16 }}>
           <input

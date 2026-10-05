@@ -41,7 +41,7 @@ export const DEMO_PAGES: DemoPageLink[] = [
       'Generate synthetic JPEGs of exact sizes and upload through the tunnel path to find 504 / size limits (1–100 MB presets).',
     href: '/upload-limit-tester',
     eyebrow: 'Tunnel / files',
-    items: ['uploadImage', 'user_data_upload_file', 'tunnel_timeout'],
+    items: ['uploadImage', 'chunked uploads', 'user_data_upload_file', 'tunnel_timeout'],
   },
   {
     title: 'PageIndex MCP',
