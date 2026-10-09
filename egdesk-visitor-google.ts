@@ -328,6 +328,45 @@ export async function startVisitorGoogleLogin(options: {
   window.location.href = result.authUrl;
 }
 
+export async function registerVisitorGcp(options: {
+  oauthClientJson: unknown;
+  handle?: string;
+  egdeskPublicUrl?: string;
+}) {
+  if (typeof window === 'undefined') {
+    throw new Error('registerVisitorGcp() must run in the browser');
+  }
+  const sampleReturnTo = new URL(resolveVisitorAppPath('/auth/callback'), window.location.origin).toString();
+  let egdeskPublicUrl = options.egdeskPublicUrl?.trim() || resolveEgdeskPublicUrl();
+  if (isDevSiteHostname(window.location.hostname) && isLoopbackHostname(window.location.hostname)) {
+    egdeskPublicUrl = 'http://localhost:8080';
+  }
+  return callVisitorAuth('register_gcp', {
+    oauthClientJson: options.oauthClientJson,
+    handle: options.handle,
+    egdeskPublicUrl,
+    sampleReturnTo,
+  });
+}
+
+export async function forgetVisitorGcp(handle: string) {
+  const sampleReturnTo = new URL(resolveVisitorAppPath('/auth/callback'), window.location.origin).toString();
+  return callVisitorAuth('forget_gcp', { handle, sampleReturnTo });
+}
+
+const VISITOR_GCP_HANDLE_KEY = 'egdesk_visitor_gcp_handle';
+
+export function getStoredVisitorGcpHandle(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(VISITOR_GCP_HANDLE_KEY);
+}
+
+export function setStoredVisitorGcpHandle(handle: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (handle) window.localStorage.setItem(VISITOR_GCP_HANDLE_KEY, handle);
+  else window.localStorage.removeItem(VISITOR_GCP_HANDLE_KEY);
+}
+
 export async function exchangeVisitorAuthCode(code: string) {
   const result = await callVisitorAuth('exchange', { code });
   if (!result?.sessionId) {
