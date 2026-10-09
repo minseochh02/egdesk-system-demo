@@ -1,9 +1,17 @@
 'use client';
 
 import type React from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getDemoNavLinks } from '@/lib/demo-pages';
 import { getEgdeskBasePath } from '@/lib/api';
+import {
+  enableDemoVisitorOperatorLogin,
+  expectedGatewayRedirectUri,
+  listDemoOAuthConnections,
+  saveDemoDesktopOAuthClient,
+  saveDemoWebOAuthClient,
+  type DemoOAuthConnection,
+} from '@/lib/demo-workspace-oauth';
 import {
   exchangeVisitorAuthCode,
   getVisitorGoogleStatus,
@@ -55,6 +63,15 @@ export default function VisitorAuthDemoPage() {
   const [sheetRange, setSheetRange] = useState('Sheet1!A1:D10');
   const [sheetPreview, setSheetPreview] = useState<unknown[] | null>(null);
   const [lastExchange, setLastExchange] = useState<Record<string, unknown> | null>(null);
+  const [connections, setConnections] = useState<DemoOAuthConnection[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [redirectMode, setRedirectMode] = useState<'gateway' | 'site-origin'>('gateway');
+  const [byoMessage, setByoMessage] = useState<string | null>(null);
+  const [redirectHint, setRedirectHint] = useState<string | null>(null);
+  const [operatorLabel, setOperatorLabel] = useState<string>('');
+  const [loginMode, setLoginMode] = useState<'platform' | 'operator'>('platform');
+  const desktopFileRef = useRef<HTMLInputElement>(null);
+  const webFileRef = useRef<HTMLInputElement>(null);
   const [steps, setSteps] = useState<FlowStep[]>([
     {
       id: 'start',
@@ -98,6 +115,21 @@ export default function VisitorAuthDemoPage() {
     return window.localStorage.getItem(VISITOR_SESSION_KEY);
   }, []);
 
+  const refreshConnections = useCallback(async () => {
+    try {
+      const rows = await listDemoOAuthConnections();
+      setConnections(rows);
+      if (!selectedProfileId && rows.length > 0) {
+        const pick = rows.find((r) => r.isDefault) || rows[0];
+        setSelectedProfileId(pick.profileId);
+        setOperatorLabel(pick.label);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setByoMessage(message);
+    }
+  }, [selectedProfileId]);
+
   const refreshStatus = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -129,6 +161,11 @@ export default function VisitorAuthDemoPage() {
     setSessionId(readLocalSession());
 
     const params = new URLSearchParams(window.location.search);
+    const authError = params.get('visitor_auth_error');
+    if (authError) {
+      setError('Google sign-in was denied or cancelled.');
+      window.history.replaceState(null, '', `${window.location.pathname}`);
+    }
     const code = params.get('code');
     if (code) {
       patchStep('callback', { state: 'running', detail: 'Exchanging one-time code…' });
@@ -167,21 +204,121 @@ export default function VisitorAuthDemoPage() {
     }
 
     void refreshStatus();
-  }, [patchStep, readLocalSession, refreshStatus, siteOrigin]);
+    void refreshConnections();
+  }, [patchStep, readLocalSession, refreshConnections, refreshStatus, siteOrigin]);
 
-  const handleSignIn = useCallback(async (scopes: typeof VISITOR_BASIC_SCOPES | typeof VISITOR_WORKSPACE_SCOPES) => {
+  useEffect(() => {
+    setRedirectHint(expectedGatewayRedirectUri(egdeskPublicUrl || 'http://localhost:8080'));
+  }, [egdeskPublicUrl]);
+
+  const handleDesktopJsonUpload = useCallback(
+    async (file: File) => {
+      setBusy(true);
+      setByoMessage(null);
+      setError(null);
+      try {
+        const json = JSON.parse(await file.text());
+        const label =
+          operatorLabel.trim() ||
+          (typeof json?.installed?.project_id === 'string' ? json.installed.project_id : 'demo-gcp');
+        const result = await saveDemoDesktopOAuthClient({ oauthClientJson: json, label });
+        setByoMessage(
+          result.state === 'saved'
+            ? `Desktop connection saved (${label}). Upload the Web client JSON next.`
+            : 'Desktop upload finished.',
+        );
+        await refreshConnections();
+      } catch (err) {
+        setByoMessage(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusy(false);
+        if (desktopFileRef.current) desktopFileRef.current.value = '';
+      }
+    },
+    [operatorLabel, refreshConnections],
+  );
+
+  const handleWebJsonUpload = useCallback(
+    async (file: File) => {
+      if (!selectedProfileId) {
+        setByoMessage('Create or select a GCP connection first (Desktop JSON).');
+        return;
+      }
+      setBusy(true);
+      setByoMessage(null);
+      setError(null);
+      try {
+        const json = JSON.parse(await file.text());
+        const result = await saveDemoWebOAuthClient({
+          oauthClientJson: json,
+          profileId: selectedProfileId,
+          redirectMode,
+        });
+        setRedirectHint(result.redirectUriToRegister || redirectHint);
+        setByoMessage('Web client saved on EGDesk. Enable visitor login, then sign in with your client.');
+        await refreshConnections();
+      } catch (err) {
+        setByoMessage(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusy(false);
+        if (webFileRef.current) webFileRef.current.value = '';
+      }
+    },
+    [redirectHint, redirectMode, refreshConnections, selectedProfileId],
+  );
+
+  const handleEnableOperatorVisitor = useCallback(async () => {
+    const label = operatorLabel.trim() || connections.find((c) => c.profileId === selectedProfileId)?.label;
+    if (!label) {
+      setByoMessage('Pick a connection label first.');
+      return;
+    }
+    setBusy(true);
+    setByoMessage(null);
+    try {
+      const result = await enableDemoVisitorOperatorLogin({
+        label,
+        siteOrigin: siteOrigin || window.location.origin,
+      });
+      setLoginMode('operator');
+      setByoMessage(
+        `Visitor allow-list updated for this demo (default: operator:${label}). You can sign in with your Web client now.`,
+      );
+      if (typeof result.redirectUri === 'string') setRedirectHint(result.redirectUri);
+    } catch (err) {
+      setByoMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [connections, operatorLabel, selectedProfileId, siteOrigin]);
+
+  const handleSignIn = useCallback(async (
+    scopes: typeof VISITOR_BASIC_SCOPES | typeof VISITOR_WORKSPACE_SCOPES,
+    mode: 'platform' | 'operator' = 'platform',
+  ) => {
     setBusy(true);
     setError(null);
-    patchStep('start', { state: 'running', detail: 'Redirecting to Google via EGDesk…' });
+    const label = operatorLabel.trim() || connections.find((c) => c.profileId === selectedProfileId)?.label;
+    patchStep('start', {
+      state: 'running',
+      detail:
+        mode === 'operator' && label
+          ? `Redirecting via operator:${label} (direct Google OAuth)…`
+          : 'Redirecting to Google via EGDesk (platform)…',
+    });
     try {
-      await startVisitorGoogleLogin({ next: '/visitor-auth', scopes });
+      await startVisitorGoogleLogin({
+        next: '/visitor-auth',
+        scopes,
+        gcp: mode === 'operator' && label ? `operator:${label}` : undefined,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
       patchStep('start', { state: 'error', detail: message });
       setBusy(false);
     }
-  }, [patchStep]);
+  }, [connections, operatorLabel, patchStep, selectedProfileId]);
 
   const handleSignOut = useCallback(async () => {
     setBusy(true);
@@ -258,8 +395,10 @@ export default function VisitorAuthDemoPage() {
         <div style={eyebrowStyle}>Hosted coding auth</div>
         <h1 style={titleStyle}>Visitor Google login test</h1>
         <p style={introStyle}>
-          This page exercises the brokered login flow: the hosted Next.js site never receives Supabase keys.
-          On <strong>localhost / 127.0.0.1</strong>, Google bounces via the allowlisted{' '}
+          Exercise <strong>platform</strong> login (EGDesk-brokered Supabase) or <strong>your own Web OAuth client</strong>{' '}
+          (operator BYO → direct Google OAuth to{' '}
+          <code style={codeStyle}>/visitor-auth/callback?code&amp;state</code>). Upload clients in the panel below; secrets stay on EGDesk.
+          The hosted site never receives Supabase keys. On <strong>localhost / 127.0.0.1</strong>, platform login bounces via{' '}
           <code style={codeStyle}>http://localhost:54321/auth/callback</code>. On{' '}
           <strong>LAN IP or tunnel</strong>, Google bounces through{' '}
           <code style={codeStyle}>/visitor-auth/callback/{'{pendingId}'}</code> on the MCP root.
@@ -275,6 +414,104 @@ export default function VisitorAuthDemoPage() {
           ))}
         </nav>
       </header>
+
+      <section style={panelStyle}>
+        <div style={miniLabelStyle}>Operator BYO — your Web client</div>
+        <p style={helperTextStyle}>
+          Requires EGDesk <code style={codeStyle}>workspaceByo.allowInlineClientJson: true</code> (MCP settings) and this
+          demo running via Hosted Coding so <code style={codeStyle}>EGDESK_MCP_INTERNAL_URL</code> reaches :8080.
+        </p>
+        <p style={helperTextStyle}>
+          Register this redirect URI on your Web client before downloading JSON:{' '}
+          <code style={codeStyle}>{redirectHint || 'http://localhost:8080/visitor-auth/callback'}</code>
+        </p>
+        <div style={fieldGridStyle}>
+          <label style={labelStyle}>
+            Connection label
+            <input
+              value={operatorLabel}
+              onChange={(e) => setOperatorLabel(e.target.value)}
+              placeholder="my-gcp-project"
+              style={inputStyle}
+            />
+          </label>
+          <label style={labelStyle}>
+            Connection
+            <select
+              value={selectedProfileId}
+              onChange={(e) => {
+                setSelectedProfileId(e.target.value);
+                const row = connections.find((c) => c.profileId === e.target.value);
+                if (row) setOperatorLabel(row.label);
+              }}
+              style={inputStyle}
+            >
+              <option value="">—</option>
+              {connections.map((c) => (
+                <option key={c.profileId} value={c.profileId}>
+                  {c.label} {c.clients.web ? '(Web ✓)' : ''} {c.clients.desktop ? '(Desktop ✓)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={labelStyle}>
+            Web redirect mode
+            <select
+              value={redirectMode}
+              onChange={(e) => setRedirectMode(e.target.value === 'site-origin' ? 'site-origin' : 'gateway')}
+              style={inputStyle}
+            >
+              <option value="gateway">gateway (:8080 / tunnel)</option>
+              <option value="site-origin">site-origin (custom domain)</option>
+            </select>
+          </label>
+        </div>
+        <input
+          ref={desktopFileRef}
+          type="file"
+          accept=".json,application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleDesktopJsonUpload(file);
+          }}
+        />
+        <input
+          ref={webFileRef}
+          type="file"
+          accept=".json,application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleWebJsonUpload(file);
+          }}
+        />
+        <div style={buttonRowStyle}>
+          <button
+            type="button"
+            style={secondaryBtnStyle}
+            disabled={busy}
+            onClick={() => desktopFileRef.current?.click()}
+          >
+            1. Upload Desktop JSON
+          </button>
+          <button
+            type="button"
+            style={secondaryBtnStyle}
+            disabled={busy || !selectedProfileId}
+            onClick={() => webFileRef.current?.click()}
+          >
+            2. Upload Web JSON
+          </button>
+          <button type="button" style={secondaryBtnStyle} disabled={busy} onClick={() => void handleEnableOperatorVisitor()}>
+            3. Enable visitor login for this site
+          </button>
+          <button type="button" style={secondaryBtnStyle} disabled={busy} onClick={() => void refreshConnections()}>
+            Refresh connections
+          </button>
+        </div>
+        {byoMessage && <p style={helperTextStyle}>{byoMessage}</p>}
+      </section>
 
       <section style={panelStyle}>
         <div style={panelHeaderStyle}>
@@ -293,19 +530,27 @@ export default function VisitorAuthDemoPage() {
           <div style={buttonRowStyle}>
             <button
               type="button"
-              onClick={() => void handleSignIn(VISITOR_BASIC_SCOPES)}
+              onClick={() => void handleSignIn(VISITOR_BASIC_SCOPES, 'platform')}
               disabled={busy}
               style={secondaryBtnStyle}
             >
-              Sign in (email only)
+              Platform · email only
             </button>
             <button
               type="button"
-              onClick={() => void handleSignIn(VISITOR_WORKSPACE_SCOPES)}
+              onClick={() => void handleSignIn(VISITOR_WORKSPACE_SCOPES, 'platform')}
               disabled={busy}
+              style={secondaryBtnStyle}
+            >
+              Platform · Drive/Sheets
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSignIn(VISITOR_WORKSPACE_SCOPES, 'operator')}
+              disabled={busy || !operatorLabel.trim()}
               style={primaryBtnStyle}
             >
-              {busy ? 'Working…' : status?.connected ? 'Re-sign in (Drive/Sheets)' : 'Sign in with Google'}
+              {busy ? 'Working…' : 'Sign in with YOUR Web client'}
             </button>
             <button type="button" onClick={() => void refreshStatus()} disabled={busy} style={secondaryBtnStyle}>
               Refresh status
@@ -339,6 +584,8 @@ export default function VisitorAuthDemoPage() {
           <dd style={kvDescStyle}>
             <code style={codeStyle}>{maskSessionId(sessionId)}</code>
           </dd>
+          <dt style={kvTermStyle}>Login mode</dt>
+          <dd style={kvDescStyle}>{loginMode === 'operator' ? `operator:${operatorLabel || '—'}` : 'platform'}</dd>
           <dt style={kvTermStyle}>Message</dt>
           <dd style={kvDescStyle}>{status?.message || '—'}</dd>
         </dl>
@@ -436,6 +683,10 @@ export default function VisitorAuthDemoPage() {
         <div style={miniLabelStyle}>Setup prerequisites</div>
         <ul style={listStyle}>
           <li>EGDesk HTTP server running with visitor auth enabled.</li>
+          <li>
+            Operator BYO upload: set <code style={codeStyle}>workspaceByo.allowInlineClientJson: true</code> in EGDesk MCP
+            configuration (Settings → MCP). Restart EGDesk after changing it.
+          </li>
           <li>
             <strong>Loopback</strong> (localhost / 127.0.0.1 on :4000 or :3000): Google bounces via{' '}
             <code style={codeStyle}>http://localhost:54321/auth/callback</code> (exact allowlist entry).

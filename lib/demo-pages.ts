@@ -60,10 +60,14 @@ export const DEMO_PAGES: DemoPageLink[] = [
   {
     title: 'Visitor Google Auth',
     description:
-      'Test brokered hosted-site login: EGDesk completes Google OAuth and returns an opaque session id plus email/userId to this site.',
+      'Upload your Desktop + Web OAuth JSON on EGDesk, enable operator visitor login, then sign in with platform or your own Web client and call Drive/Sheets as a visitor.',
     href: '/visitor-auth',
     eyebrow: 'Hosted coding auth',
-    items: ['startVisitorGoogleLogin', 'exchangeVisitorAuthCode', 'getVisitorGoogleStatus'],
+    items: [
+      'operator Web client upload',
+      'startVisitorGoogleLogin({ gcp })',
+      'listVisitorDriveFiles',
+    ],
   },
   {
     title: 'Drive MCP',

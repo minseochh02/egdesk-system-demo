@@ -285,6 +285,8 @@ export async function startVisitorGoogleLogin(options: {
   next?: string;
   forceConsent?: boolean;
   scopes?: readonly string[] | VisitorScopePreset;
+  gcp?: string;
+  handle?: string;
 } = {}) {
   if (typeof window === 'undefined') {
     throw new Error('startVisitorGoogleLogin() must run in the browser');
@@ -303,12 +305,15 @@ export async function startVisitorGoogleLogin(options: {
   }
   const scopes = resolveVisitorLoginScopes(options.scopes);
 
-  const result = await callVisitorAuth('start', {
+  const startArgs: Record<string, unknown> = {
     returnTo: returnTo.toString(),
     egdeskPublicUrl,
     forceConsent: options.forceConsent === true,
     scopes,
-  });
+  };
+  if (options.gcp?.trim()) startArgs.gcp = options.gcp.trim();
+  if (options.handle?.trim()) startArgs.handle = options.handle.trim();
+  const result = await callVisitorAuth('start', startArgs);
   if (!result?.authUrl) {
     throw new Error(result?.error || 'Failed to start visitor Google login');
   }

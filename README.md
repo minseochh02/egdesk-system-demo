@@ -49,6 +49,17 @@ Site-owned (never overwritten): `egdesk.visitor-auth.ts` — default visitor Goo
 
 Prod hosted coding (`:3000`) uses basePath — open e.g. `http://localhost:3000/t/{id}/p/egdesk-system-demo/visitor-auth`.
 
+#### Operator BYO (your Web OAuth client)
+
+Open **`/visitor-auth`** and use the **Operator BYO** panel:
+
+1. Enable `workspaceByo.allowInlineClientJson` in EGDesk MCP settings (so the demo can POST JSON to `:8080/workspace-oauth/tools/call`).
+2. Upload **Desktop** then **Web** client JSON (register redirect URI `http://localhost:8080/visitor-auth/callback` for local gateway mode).
+3. Click **Enable visitor login for this site** (writes `visitorGcp` allow-list on EGDesk for this hosted project).
+4. **Sign in with YOUR Web client**, then run Drive/Sheets visitor tools.
+
+Operator login uses `startVisitorGoogleLogin({ gcp: 'operator:<label>' })` — no Supabase on that path.
+
 Add to Supabase Auth redirect allowlist (once per EGDesk/tunnel origin):
 
 - `http://localhost:54321/auth/callback` (exact — loopback visitor and owner)
