@@ -98,6 +98,28 @@ function resolveWebUploadProfileId(
   return selectedProfileId;
 }
 
+/** Label for a new or updated Web upload — avoid reusing another connection's label for a different GCP project. */
+function resolveWebUploadLabel(
+  connections: DemoOAuthConnection[],
+  operatorLabel: string,
+  webProjectId: string | null,
+): string | undefined {
+  if (webProjectId) {
+    const forProject = connections.find((c) => c.projectId === webProjectId);
+    if (forProject) return forProject.label;
+    const manual = operatorLabel.trim();
+    if (manual) {
+      const byLabel = connections.find((c) => c.label.toLowerCase() === manual.toLowerCase());
+      if (byLabel && byLabel.projectId !== webProjectId) {
+        return webProjectId;
+      }
+    }
+    return manual || webProjectId;
+  }
+  const manual = operatorLabel.trim();
+  return manual || undefined;
+}
+
 export default function VisitorAuthDemoPage() {
   const [basePath, setBasePath] = useState('');
   const [siteOrigin, setSiteOrigin] = useState('');
@@ -332,8 +354,7 @@ export default function VisitorAuthDemoPage() {
         }
         const webProjectId = extractWebProjectId(json);
         const profileId = resolveWebUploadProfileId(connections, selectedProfileId, webProjectId);
-        const label =
-          operatorLabel.trim() || webProjectId || connections.find((c) => c.profileId === profileId)?.label;
+        const label = resolveWebUploadLabel(connections, operatorLabel, webProjectId);
         const result = await saveDemoWebOAuthClient({
           oauthClientJson: json,
           profileId,
@@ -565,7 +586,9 @@ export default function VisitorAuthDemoPage() {
           installed JSON) and <strong>Web application</strong> (visitor / <code style={codeStyle}>web</code> JSON). They
           are different downloads — do not upload the Desktop file as Web. You can register <strong>multiple GCP
           projects</strong>: each appears as its own row in Connection (matched by <code style={codeStyle}>project_id</code>
-          ). Web upload creates a new row when the JSON’s project does not match the selected connection.
+          ). Web upload creates a new row when the JSON’s <code style={codeStyle}>project_id</code> does not
+          match the selected connection. <strong>Two client IDs in the same GCP project</strong> (Desktop + Web) still
+          show as <strong>one</strong> row — that is expected.
         </p>
         <p style={helperTextStyle}>
           Before downloading Web JSON, add this authorized redirect URI in GCP:{' '}
@@ -600,7 +623,11 @@ export default function VisitorAuthDemoPage() {
               <option value="">—</option>
               {connections.map((c) => (
                 <option key={c.profileId} value={c.profileId}>
-                  {c.label} {c.clients.web ? '(Web ✓)' : ''} {c.clients.desktop ? '(Desktop ✓)' : ''}
+                  {c.label}
+                  {c.projectId ? ` · ${c.projectId}` : ''}
+                  {c.clientIdMasked ? ` · ${c.clientIdMasked}` : ''}
+                  {c.clients.web ? ' · Web ✓' : ''}
+                  {c.clients.desktop ? ' · Desktop ✓' : ''}
                 </option>
               ))}
             </select>
