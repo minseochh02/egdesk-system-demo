@@ -249,7 +249,7 @@ export function resolveEgdeskPublicUrl(): string {
 }
 
 async function callVisitorAuth(tool: string, args: Record<string, unknown> = {}) {
-  const response = await apiFetch('/__visitor_auth_proxy', {
+  const response = await apiFetch('/api/visitor-auth', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...visitorOriginHeaders() },
     body: JSON.stringify({ tool, arguments: args }),
@@ -262,7 +262,7 @@ async function callVisitorGoogle(tool: string, args: Record<string, unknown> = {
   if (!sessionId) {
     throw new Error('Visitor is not signed in. Call startVisitorGoogleLogin() first.');
   }
-  const response = await apiFetch('/__visitor_google_proxy', {
+  const response = await apiFetch('/api/visitor-google', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -297,7 +297,15 @@ export async function startVisitorGoogleLogin(options: {
   const returnTo = new URL(resolveVisitorAppPath('/auth/callback'), window.location.origin);
   returnTo.searchParams.set('next', next);
   // OAuth bounce is chosen server-side from returnTo + egdeskPublicUrl — see file header table.
-  const egdeskPublicUrl = resolveEgdeskPublicUrl();
+  let egdeskPublicUrl = resolveEgdeskPublicUrl();
+  const operatorGcp = options.gcp?.trim();
+  if (
+    operatorGcp?.startsWith('operator:') &&
+    isDevSiteHostname(window.location.hostname) &&
+    isLoopbackHostname(window.location.hostname)
+  ) {
+    egdeskPublicUrl = 'http://localhost:8080';
+  }
   if (isLocalEgdeskUrl(egdeskPublicUrl) && !isDevSiteHostname(window.location.hostname)) {
     throw new Error(
       'Visitor Google login cannot use a localhost EGDesk URL from a published site. Set NEXT_PUBLIC_EGDESK_API_URL to the tunnel MCP root (https://…/t/{id}).',

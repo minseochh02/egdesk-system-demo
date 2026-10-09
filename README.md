@@ -58,7 +58,7 @@ Open **`/visitor-auth`** and use the **Operator BYO** panel:
 3. Click **Enable visitor login for this site** (writes `visitorGcp` allow-list on EGDesk for this hosted project).
 4. **Sign in with YOUR Web client**, then run Drive/Sheets visitor tools.
 
-Operator login uses `startVisitorGoogleLogin({ gcp: 'operator:<label>' })` — no Supabase on that path.
+Operator login uses `startVisitorGoogleLogin({ gcp: 'operator:<label>' })` — no Supabase on that path. Visitor auth posts to `/api/visitor-auth` (desktop `:8080` via `EGDESK_MCP_INTERNAL_URL`), not the tunnel gateway.
 
 Add to Supabase Auth redirect allowlist (once per EGDesk/tunnel origin):
 
