@@ -36,7 +36,7 @@ function parseMcpTextPayload(envelope: McpToolResult | McpEnvelope): Record<stri
 
 async function callWorkspaceOauth(tool: string, args: Record<string, unknown>) {
   const body: McpCallBody = { tool, arguments: args };
-  const response = await apiFetch('/__workspace_oauth_proxy', {
+  const response = await apiFetch('/api/workspace-oauth', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
