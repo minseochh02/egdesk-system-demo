@@ -57,6 +57,11 @@ async function callWorkspaceOauth(tool: string, args: Record<string, unknown>) {
     throw new Error((err.message || err.code || 'Workspace OAuth error') + hint);
   }
   if (!response.ok || envelope.success === false) {
+    if (payload.error && typeof payload.error === 'object') {
+      const err = payload.error as { message?: string; code?: string; redirectUriToRegister?: string };
+      const hint = err.redirectUriToRegister ? ` Register: ${err.redirectUriToRegister}` : '';
+      throw new Error((err.message || err.code || 'Workspace OAuth error') + hint);
+    }
     const msg =
       typeof envelope.error === 'string'
         ? envelope.error
