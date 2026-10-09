@@ -102,12 +102,18 @@ export async function saveDemoDesktopOAuthClient(options: {
 
 export async function saveDemoWebOAuthClient(options: {
   oauthClientJson: unknown;
-  profileId: string;
+  profileId?: string;
+  label?: string;
   redirectMode: 'gateway' | 'site-origin';
   /** Local dev on :4002 — register http://localhost:8080/visitor-auth/callback in GCP. */
   gatewayTarget?: 'local' | 'tunnel';
   sampleReturnTo?: string;
-}): Promise<{ redirectUriToRegister?: string; state?: string }> {
+}): Promise<{
+  redirectUriToRegister?: string;
+  state?: string;
+  profileId?: string;
+  label?: string;
+}> {
   const egdeskPublicUrl =
     options.gatewayTarget === 'tunnel'
       ? resolveEgdeskPublicUrl()
@@ -118,6 +124,7 @@ export async function saveDemoWebOAuthClient(options: {
   const data = await callWorkspaceOauth('workspace_oauth_clients_manage', {
     action: 'upsert_web',
     profileId: options.profileId,
+    label: options.label,
     oauthClientJson: options.oauthClientJson,
     redirectMode: options.redirectMode,
     egdeskPublicUrl,
@@ -127,6 +134,8 @@ export async function saveDemoWebOAuthClient(options: {
     redirectUriToRegister:
       typeof data.redirectUriToRegister === 'string' ? data.redirectUriToRegister : undefined,
     state: typeof data.state === 'string' ? data.state : undefined,
+    profileId: typeof data.profileId === 'string' ? data.profileId : undefined,
+    label: typeof data.label === 'string' ? data.label : undefined,
   };
 }
 

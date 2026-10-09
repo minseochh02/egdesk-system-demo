@@ -12,7 +12,11 @@ import {
   saveDemoWebOAuthClient,
   type DemoOAuthConnection,
 } from '@/lib/demo-workspace-oauth';
-import { classifyOAuthClientJson, describeOAuthClientJsonKind } from '@/lib/oauth-client-json';
+import {
+  classifyOAuthClientJson,
+  describeOAuthClientJsonKind,
+  extractWebProjectId,
+} from '@/lib/oauth-client-json';
 import {
   exchangeVisitorAuthCode,
   getVisitorGoogleStatus,
@@ -60,6 +64,38 @@ function maskSessionId(value: string | null): string {
   if (!value) return '—';
   if (value.length <= 12) return `${value.slice(0, 4)}…`;
   return `${value.slice(0, 8)}…${value.slice(-4)}`;
+}
+
+function resolveDesktopUploadLabel(
+  json: unknown,
+  connections: DemoOAuthConnection[],
+  operatorLabel: string,
+): string {
+  const projectId =
+    typeof (json as { installed?: { project_id?: string } })?.installed?.project_id === 'string'
+      ? (json as { installed: { project_id: string } }).installed.project_id.trim()
+      : null;
+  const manual = operatorLabel.trim();
+  if (manual) {
+    const existing = connections.find((c) => c.label.toLowerCase() === manual.toLowerCase());
+    if (existing && projectId && existing.projectId && existing.projectId !== projectId) {
+      return projectId;
+    }
+    return manual;
+  }
+  return projectId || 'demo-gcp';
+}
+
+function resolveWebUploadProfileId(
+  connections: DemoOAuthConnection[],
+  selectedProfileId: string,
+  webProjectId: string | null,
+): string | undefined {
+  if (!selectedProfileId) return undefined;
+  const row = connections.find((c) => c.profileId === selectedProfileId);
+  if (!row || !webProjectId) return selectedProfileId;
+  if (row.projectId && row.projectId !== webProjectId) return undefined;
+  return selectedProfileId;
 }
 
 export default function VisitorAuthDemoPage() {
@@ -251,13 +287,16 @@ export default function VisitorAuthDemoPage() {
       setError(null);
       try {
         const json = JSON.parse(await file.text());
-        const label =
-          operatorLabel.trim() ||
-          (typeof json?.installed?.project_id === 'string' ? json.installed.project_id : 'demo-gcp');
+        const label = resolveDesktopUploadLabel(json, connections, operatorLabel);
         const result = await saveDemoDesktopOAuthClient({ oauthClientJson: json, label });
+        const saved = result.status as { profileId?: string; label?: string } | undefined;
+        if (saved?.profileId) {
+          setSelectedProfileId(saved.profileId);
+          setOperatorLabel(saved.label || label);
+        }
         setByoMessage(
           result.state === 'saved'
-            ? `Desktop connection saved (${label}). Upload the Web client JSON next.`
+            ? `Desktop connection saved (${saved?.label || label}). Upload the Web client JSON next.`
             : 'Desktop upload finished.',
         );
         await refreshConnections();
@@ -268,17 +307,13 @@ export default function VisitorAuthDemoPage() {
         if (desktopFileRef.current) desktopFileRef.current.value = '';
       }
     },
-    [operatorLabel, refreshConnections],
+    [connections, operatorLabel, refreshConnections],
   );
 
   const handleWebJsonUpload = useCallback(
     async (file: File) => {
       if (!isOAuthJsonFile(file)) {
         setByoMessage('Choose a .json Web OAuth client file from Google Cloud Console.');
-        return;
-      }
-      if (!selectedProfileId) {
-        setByoMessage('Create or select a GCP connection first (Desktop JSON).');
         return;
       }
       setBusy(true);
@@ -295,24 +330,44 @@ export default function VisitorAuthDemoPage() {
           );
           return;
         }
+        const webProjectId = extractWebProjectId(json);
+        const profileId = resolveWebUploadProfileId(connections, selectedProfileId, webProjectId);
+        const label =
+          operatorLabel.trim() || webProjectId || connections.find((c) => c.profileId === profileId)?.label;
         const result = await saveDemoWebOAuthClient({
           oauthClientJson: json,
-          profileId: selectedProfileId,
+          profileId,
+          label: label || undefined,
           redirectMode,
           gatewayTarget,
         });
         if (result.redirectUriToRegister) setRedirectHint(result.redirectUriToRegister);
+        if (result.profileId) {
+          setSelectedProfileId(result.profileId);
+        }
+        if (result.label) {
+          setOperatorLabel(result.label);
+        }
         await refreshConnections();
-        const label =
-          operatorLabel.trim() || connections.find((c) => c.profileId === selectedProfileId)?.label;
-        if (label) {
+        const effectiveLabel =
+          result.label ||
+          label ||
+          connections.find((c) => c.profileId === (result.profileId || selectedProfileId))?.label;
+        if (effectiveLabel) {
           await enableDemoVisitorOperatorLogin({
-            label,
+            label: effectiveLabel,
             siteOrigin: siteOrigin || window.location.origin,
           });
           setLoginMode('operator');
+          const created =
+            webProjectId &&
+            profileId === undefined &&
+            result.profileId &&
+            !connections.some((c) => c.projectId === webProjectId);
           setByoMessage(
-            `Web client saved and visitor login enabled (operator:${label}). Click “Sign in with YOUR Web client”.`,
+            created
+              ? `New GCP connection added (${effectiveLabel}). Visitor login enabled (operator:${effectiveLabel}).`
+              : `Web client saved and visitor login enabled (operator:${effectiveLabel}). Click “Sign in with YOUR Web client”.`,
           );
         } else {
           setByoMessage('Web client saved. Enable visitor login, then sign in with your client.');
@@ -340,18 +395,12 @@ export default function VisitorAuthDemoPage() {
         return;
       }
       if (kind === 'web') {
-        if (!selectedProfileId) {
-          setByoMessage(
-            'Web JSON detected. Upload a Desktop JSON first (step 1) to create a connection, then upload Web again.',
-          );
-          return;
-        }
         await handleWebJsonUpload(file);
         return;
       }
       setByoMessage(describeOAuthClientJsonKind(kind));
     },
-    [handleDesktopJsonUpload, handleWebJsonUpload, selectedProfileId],
+    [handleDesktopJsonUpload, handleWebJsonUpload],
   );
 
   const handleEnableOperatorVisitor = useCallback(async () => {
@@ -514,7 +563,9 @@ export default function VisitorAuthDemoPage() {
         <p style={helperTextStyle}>
           Google Cloud needs <strong>two</strong> OAuth clients in the same project: <strong>Desktop</strong> (owner /
           installed JSON) and <strong>Web application</strong> (visitor / <code style={codeStyle}>web</code> JSON). They
-          are different downloads — do not upload the Desktop file as Web.
+          are different downloads — do not upload the Desktop file as Web. You can register <strong>multiple GCP
+          projects</strong>: each appears as its own row in Connection (matched by <code style={codeStyle}>project_id</code>
+          ). Web upload creates a new row when the JSON’s project does not match the selected connection.
         </p>
         <p style={helperTextStyle}>
           Before downloading Web JSON, add this authorized redirect URI in GCP:{' '}
@@ -630,7 +681,7 @@ export default function VisitorAuthDemoPage() {
           <button
             type="button"
             style={secondaryBtnStyle}
-            disabled={busy || !selectedProfileId}
+            disabled={busy}
             onClick={() => webFileRef.current?.click()}
           >
             2. Upload Web JSON
