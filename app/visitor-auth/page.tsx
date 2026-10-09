@@ -44,6 +44,17 @@ type FlowStep = {
 
 const VISITOR_SESSION_KEY = 'egdesk_visitor_session';
 
+function isOAuthJsonFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return (
+    name.endsWith('.json') ||
+    name.includes('client_secret') ||
+    file.type === 'application/json' ||
+    file.type === 'text/json' ||
+    file.type === ''
+  );
+}
+
 function maskSessionId(value: string | null): string {
   if (!value) return '—';
   if (value.length <= 12) return `${value.slice(0, 4)}…`;
@@ -213,6 +224,10 @@ export default function VisitorAuthDemoPage() {
 
   const handleDesktopJsonUpload = useCallback(
     async (file: File) => {
+      if (!isOAuthJsonFile(file)) {
+        setByoMessage('Choose a .json OAuth client file from Google Cloud Console.');
+        return;
+      }
       setBusy(true);
       setByoMessage(null);
       setError(null);
@@ -240,6 +255,10 @@ export default function VisitorAuthDemoPage() {
 
   const handleWebJsonUpload = useCallback(
     async (file: File) => {
+      if (!isOAuthJsonFile(file)) {
+        setByoMessage('Choose a .json Web OAuth client file from Google Cloud Console.');
+        return;
+      }
       if (!selectedProfileId) {
         setByoMessage('Create or select a GCP connection first (Desktop JSON).');
         return;
@@ -469,7 +488,7 @@ export default function VisitorAuthDemoPage() {
         <input
           ref={desktopFileRef}
           type="file"
-          accept=".json,application/json"
+          accept=".json"
           style={{ display: 'none' }}
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -479,7 +498,7 @@ export default function VisitorAuthDemoPage() {
         <input
           ref={webFileRef}
           type="file"
-          accept=".json,application/json"
+          accept=".json"
           style={{ display: 'none' }}
           onChange={(e) => {
             const file = e.target.files?.[0];
