@@ -1,6 +1,6 @@
 /**
  * Dev-only helpers for the system demo to configure operator BYO Web clients on EGDesk.
- * Requires workspaceByo.allowInlineClientJson in EGDesk MCP settings.
+ * Posts to loopback :8080 via /api/workspace-oauth (hosted Next on the same PC).
  */
 
 import { apiFetch } from '@/egdesk-helpers';
@@ -41,10 +41,10 @@ async function callWorkspaceOauth(tool: string, args: Record<string, unknown>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const envelope = (await response.json().catch(() => ({}))) as McpEnvelope;
-  if (!response.ok) {
-    throw new Error(envelope.error || `Workspace OAuth request failed (${response.status})`);
-  }
+  const envelope = (await response.json().catch(() => ({}))) as McpEnvelope & {
+    error?: string;
+    success?: boolean;
+  };
   const payload = parseMcpTextPayload(envelope);
   if (envelope.result?.isError) {
     const err = payload.error as { message?: string; code?: string; redirectUriToRegister?: string } | undefined;
@@ -55,6 +55,13 @@ async function callWorkspaceOauth(tool: string, args: Record<string, unknown>) {
     const err = payload.error as { message?: string; code?: string; redirectUriToRegister?: string };
     const hint = err.redirectUriToRegister ? ` Register: ${err.redirectUriToRegister}` : '';
     throw new Error((err.message || err.code || 'Workspace OAuth error') + hint);
+  }
+  if (!response.ok || envelope.success === false) {
+    const msg =
+      typeof envelope.error === 'string'
+        ? envelope.error
+        : `Workspace OAuth request failed (${response.status})`;
+    throw new Error(msg);
   }
   return payload;
 }
@@ -92,9 +99,14 @@ export async function saveDemoWebOAuthClient(options: {
   oauthClientJson: unknown;
   profileId: string;
   redirectMode: 'gateway' | 'site-origin';
+  /** Local dev on :4002 — register http://localhost:8080/visitor-auth/callback in GCP. */
+  gatewayTarget?: 'local' | 'tunnel';
   sampleReturnTo?: string;
 }): Promise<{ redirectUriToRegister?: string; state?: string }> {
-  const egdeskPublicUrl = resolveEgdeskPublicUrl();
+  const egdeskPublicUrl =
+    options.gatewayTarget === 'tunnel'
+      ? resolveEgdeskPublicUrl()
+      : 'http://localhost:8080';
   const sampleReturnTo =
     options.sampleReturnTo ||
     (typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'http://localhost:4000/auth/callback');

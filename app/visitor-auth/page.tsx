@@ -12,6 +12,7 @@ import {
   saveDemoWebOAuthClient,
   type DemoOAuthConnection,
 } from '@/lib/demo-workspace-oauth';
+import { classifyOAuthClientJson, describeOAuthClientJsonKind } from '@/lib/oauth-client-json';
 import {
   exchangeVisitorAuthCode,
   getVisitorGoogleStatus,
@@ -77,12 +78,14 @@ export default function VisitorAuthDemoPage() {
   const [connections, setConnections] = useState<DemoOAuthConnection[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [redirectMode, setRedirectMode] = useState<'gateway' | 'site-origin'>('gateway');
+  const [gatewayTarget, setGatewayTarget] = useState<'local' | 'tunnel'>('local');
   const [byoMessage, setByoMessage] = useState<string | null>(null);
   const [redirectHint, setRedirectHint] = useState<string | null>(null);
   const [operatorLabel, setOperatorLabel] = useState<string>('');
   const [loginMode, setLoginMode] = useState<'platform' | 'operator'>('platform');
   const desktopFileRef = useRef<HTMLInputElement>(null);
   const webFileRef = useRef<HTMLInputElement>(null);
+  const autoFileRef = useRef<HTMLInputElement>(null);
   const [steps, setSteps] = useState<FlowStep[]>([
     {
       id: 'start',
@@ -219,8 +222,23 @@ export default function VisitorAuthDemoPage() {
   }, [patchStep, readLocalSession, refreshConnections, refreshStatus, siteOrigin]);
 
   useEffect(() => {
-    setRedirectHint(expectedGatewayRedirectUri(egdeskPublicUrl || 'http://localhost:8080'));
-  }, [egdeskPublicUrl]);
+    const base =
+      redirectMode === 'site-origin' && siteOrigin
+        ? siteOrigin
+        : gatewayTarget === 'tunnel'
+          ? egdeskPublicUrl || 'http://localhost:8080'
+          : 'http://localhost:8080';
+    setRedirectHint(
+      redirectMode === 'site-origin'
+        ? `${base.replace(/\/$/, '')}/visitor-auth/callback`
+        : expectedGatewayRedirectUri(base),
+    );
+  }, [egdeskPublicUrl, gatewayTarget, redirectMode, siteOrigin]);
+
+  const selectedConnection = useMemo(
+    () => connections.find((c) => c.profileId === selectedProfileId) ?? null,
+    [connections, selectedProfileId],
+  );
 
   const handleDesktopJsonUpload = useCallback(
     async (file: File) => {
@@ -268,14 +286,37 @@ export default function VisitorAuthDemoPage() {
       setError(null);
       try {
         const json = JSON.parse(await file.text());
+        const kind = classifyOAuthClientJson(json);
+        if (kind !== 'web') {
+          setByoMessage(
+            kind === 'desktop'
+              ? 'That file is the Desktop (installed) client. Create a separate Web application OAuth client in GCP and download its JSON.'
+              : describeOAuthClientJsonKind(kind),
+          );
+          return;
+        }
         const result = await saveDemoWebOAuthClient({
           oauthClientJson: json,
           profileId: selectedProfileId,
           redirectMode,
+          gatewayTarget,
         });
-        setRedirectHint(result.redirectUriToRegister || redirectHint);
-        setByoMessage('Web client saved on EGDesk. Enable visitor login, then sign in with your client.');
+        if (result.redirectUriToRegister) setRedirectHint(result.redirectUriToRegister);
         await refreshConnections();
+        const label =
+          operatorLabel.trim() || connections.find((c) => c.profileId === selectedProfileId)?.label;
+        if (label) {
+          await enableDemoVisitorOperatorLogin({
+            label,
+            siteOrigin: siteOrigin || window.location.origin,
+          });
+          setLoginMode('operator');
+          setByoMessage(
+            `Web client saved and visitor login enabled (operator:${label}). Click “Sign in with YOUR Web client”.`,
+          );
+        } else {
+          setByoMessage('Web client saved. Enable visitor login, then sign in with your client.');
+        }
       } catch (err) {
         setByoMessage(err instanceof Error ? err.message : String(err));
       } finally {
@@ -283,13 +324,47 @@ export default function VisitorAuthDemoPage() {
         if (webFileRef.current) webFileRef.current.value = '';
       }
     },
-    [redirectHint, redirectMode, refreshConnections, selectedProfileId],
+    [connections, gatewayTarget, operatorLabel, redirectMode, refreshConnections, selectedProfileId, siteOrigin],
+  );
+
+  const handleAutoOAuthJsonUpload = useCallback(
+    async (file: File) => {
+      if (!isOAuthJsonFile(file)) {
+        setByoMessage('Choose a .json file from Google Cloud Console (Credentials).');
+        return;
+      }
+      const json = JSON.parse(await file.text());
+      const kind = classifyOAuthClientJson(json);
+      if (kind === 'desktop') {
+        await handleDesktopJsonUpload(file);
+        return;
+      }
+      if (kind === 'web') {
+        if (!selectedProfileId) {
+          setByoMessage(
+            'Web JSON detected. Upload a Desktop JSON first (step 1) to create a connection, then upload Web again.',
+          );
+          return;
+        }
+        await handleWebJsonUpload(file);
+        return;
+      }
+      setByoMessage(describeOAuthClientJsonKind(kind));
+    },
+    [handleDesktopJsonUpload, handleWebJsonUpload, selectedProfileId],
   );
 
   const handleEnableOperatorVisitor = useCallback(async () => {
     const label = operatorLabel.trim() || connections.find((c) => c.profileId === selectedProfileId)?.label;
     if (!label) {
       setByoMessage('Pick a connection label first.');
+      return;
+    }
+    const row = connections.find((c) => c.label === label || c.profileId === selectedProfileId);
+    if (!row?.clients?.web) {
+      setByoMessage(
+        'This connection has no Web client yet. In GCP create a separate “Web application” OAuth client (not Desktop), add the redirect URI below, download JSON, then upload with step 2 or Auto-upload.',
+      );
       return;
     }
     setBusy(true);
@@ -437,13 +512,19 @@ export default function VisitorAuthDemoPage() {
       <section style={panelStyle}>
         <div style={miniLabelStyle}>Operator BYO — your Web client</div>
         <p style={helperTextStyle}>
-          Requires EGDesk <code style={codeStyle}>workspaceByo.allowInlineClientJson: true</code> (MCP settings) and this
-          demo running via Hosted Coding so <code style={codeStyle}>EGDESK_MCP_INTERNAL_URL</code> reaches :8080.
+          Google Cloud needs <strong>two</strong> OAuth clients in the same project: <strong>Desktop</strong> (owner /
+          installed JSON) and <strong>Web application</strong> (visitor / <code style={codeStyle}>web</code> JSON). They
+          are different downloads — do not upload the Desktop file as Web.
         </p>
         <p style={helperTextStyle}>
-          Register this redirect URI on your Web client before downloading JSON:{' '}
+          Before downloading Web JSON, add this authorized redirect URI in GCP:{' '}
           <code style={codeStyle}>{redirectHint || 'http://localhost:8080/visitor-auth/callback'}</code>
         </p>
+        {selectedConnection && !selectedConnection.clients.web ? (
+          <p style={{ ...helperTextStyle, color: '#b45309' }}>
+            Selected connection: Desktop {selectedConnection.clients.desktop ? '✓' : '—'}, Web — (upload Web JSON next)
+          </p>
+        ) : null}
         <div style={fieldGridStyle}>
           <label style={labelStyle}>
             Connection label
@@ -480,11 +561,35 @@ export default function VisitorAuthDemoPage() {
               onChange={(e) => setRedirectMode(e.target.value === 'site-origin' ? 'site-origin' : 'gateway')}
               style={inputStyle}
             >
-              <option value="gateway">gateway (:8080 / tunnel)</option>
+              <option value="gateway">gateway</option>
               <option value="site-origin">site-origin (custom domain)</option>
             </select>
           </label>
+          {redirectMode === 'gateway' ? (
+            <label style={labelStyle}>
+              Gateway target
+              <select
+                value={gatewayTarget}
+                onChange={(e) => setGatewayTarget(e.target.value === 'tunnel' ? 'tunnel' : 'local')}
+                style={inputStyle}
+              >
+                <option value="local">local EGDesk (:8080) — recommended on :4002</option>
+                <option value="tunnel">tunnel MCP root</option>
+              </select>
+            </label>
+          ) : null}
         </div>
+        <input
+          ref={autoFileRef}
+          type="file"
+          accept=".json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleAutoOAuthJsonUpload(file);
+            if (autoFileRef.current) autoFileRef.current.value = '';
+          }}
+        />
         <input
           ref={desktopFileRef}
           type="file"
@@ -506,6 +611,14 @@ export default function VisitorAuthDemoPage() {
           }}
         />
         <div style={buttonRowStyle}>
+          <button
+            type="button"
+            style={primaryBtnStyle}
+            disabled={busy}
+            onClick={() => autoFileRef.current?.click()}
+          >
+            Auto-upload OAuth JSON
+          </button>
           <button
             type="button"
             style={secondaryBtnStyle}
