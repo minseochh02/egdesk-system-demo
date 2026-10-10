@@ -51,7 +51,7 @@ Prod hosted coding (`:3000`) uses basePath — open e.g. `http://localhost:3000/
 
 #### Operator BYO (your Web OAuth client)
 
-Open **`/visitor-auth`** and use the **Operator BYO** panel:
+Open **`/visitor-auth`** and use the **Operator BYO** panel ( **local dev on the same PC as EGDesk only** ):
 
 1. Enable `workspaceByo.allowInlineClientJson` in EGDesk MCP settings (so the demo can POST JSON to `:8080/workspace-oauth/tools/call`).
 2. Upload **Desktop** then **Web** client JSON (register redirect URI `http://localhost:8080/visitor-auth/callback` for local gateway mode).
@@ -59,6 +59,8 @@ Open **`/visitor-auth`** and use the **Operator BYO** panel:
 4. **Sign in with YOUR Web client**, then run Drive/Sheets visitor tools.
 
 Operator login uses `startVisitorGoogleLogin({ gcp: 'operator:<label>' })` — no Supabase on that path. Visitor auth posts to `/api/visitor-auth` (desktop `:8080` via `EGDESK_MCP_INTERNAL_URL`), not the tunnel gateway.
+
+**Security — `app/api/workspace-oauth/route.ts`:** This route proxies the **browser** to operator config tools (`workspace_oauth_clients*`). That violates visitor/operator separation if the site is public. It is enabled only when `NODE_ENV=development` or `EGDESK_DEMO_ALLOW_WORKSPACE_OAUTH_PROXY=true`. **Delete this route** (or leave it disabled) before exposing the demo to the internet. Production operators upload BYO clients in **EGDesk → Google Workspace**, not via the hosted site. `@egdesk/next-api-plugin` must never generate this route (HANDOFF §6.9).
 
 Add to Supabase Auth redirect allowlist (once per EGDesk/tunnel origin):
 

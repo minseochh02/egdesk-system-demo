@@ -117,6 +117,7 @@ export default function GmailMcpPage() {
       categories={CATEGORIES}
       runningHints={RUNNING_HINTS}
       accentColor="#c5221f"
+      showOwnerGcpLaneCallout
     />
   );
 }

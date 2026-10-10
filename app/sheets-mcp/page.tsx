@@ -103,6 +103,7 @@ export default function SheetsMcpPage() {
       categories={CATEGORIES}
       runningHints={RUNNING_HINTS}
       accentColor="#188038"
+      showOwnerGcpLaneCallout
     />
   );
 }

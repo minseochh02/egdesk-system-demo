@@ -1343,8 +1343,10 @@ export default function DrivePlayground() {
                 : 'Visitor not signed in'}
             </p>
             <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0', lineHeight: 1.45 }}>
-              Visitors sign in with Google as EGDesk users. Their Drive/Sheets stay on their
-              account — this does not overwrite owner MCP credentials.
+              Visitor Drive uses the GCP project bound at login (<code style={{ fontSize: 12 }}>platform</code> or{' '}
+              <code style={{ fontSize: 12 }}>operator:&lt;label&gt;</code> Web client) — configure on{' '}
+              <a href="/visitor-auth" style={{ color: '#1d4ed8' }}>/visitor-auth</a>. Owner tools above use Desktop
+              BYO / default connection instead.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1608,6 +1610,7 @@ export default function DrivePlayground() {
       categories={CATEGORIES}
       runningHints={RUNNING_HINTS}
       accentColor="#0f766e"
+      showOwnerGcpLaneCallout
       sessionBar={sessionBar}
       renderDisplay={renderDisplay}
       onResult={onResult}

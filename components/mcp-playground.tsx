@@ -12,6 +12,7 @@ import {
   type FileFieldPayload,
 } from '@/lib/mcp-utils';
 import { getDemoNavLinks } from '@/lib/demo-pages';
+import { OwnerGcpApiLaneCallout } from '@/components/GcpApiLaneCallout';
 
 export type PlaygroundFieldDef = {
   name: string;
@@ -96,6 +97,8 @@ export type McpPlaygroundProps = {
     filePayloads: Record<string, FileFieldPayload>;
   }) => React.ReactNode;
   onFieldValuesChange?: (fieldValues: Record<string, string>) => void;
+  /** Show how owner-lane Workspace MCP picks a GCP connection (Drive/Sheets/Gmail demos). */
+  showOwnerGcpLaneCallout?: boolean;
 };
 
 function resolveFieldRaw(
@@ -250,6 +253,7 @@ export function McpPlayground({
   renderFormExtrasPosition = 'after',
   renderRunActions,
   onFieldValuesChange,
+  showOwnerGcpLaneCallout = false,
 }: McpPlaygroundProps) {
   const toolSelectKey = (tool: PlaygroundToolDef) => tool.helperName || tool.name;
 
@@ -498,6 +502,7 @@ export function McpPlayground({
         <div style={{ ...eyebrowStyle, color: accentColor }}>{eyebrow}</div>
         <h1 style={titleStyle}>{title}</h1>
         <p style={subtitleStyle}>{subtitle}</p>
+        {showOwnerGcpLaneCallout ? <OwnerGcpApiLaneCallout /> : null}
       </header>
 
       {sessionBar}

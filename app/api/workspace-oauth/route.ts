@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/**
+ * DEMO ONLY — forwards browser POSTs to EGDesk `/workspace-oauth/tools/call`.
+ * If this route is public, anyone can invoke operator BYO config tools (HANDOFF §6.9, invariant 2).
+ * Remove this file or keep it disabled before hosting the demo for a public audience.
+ */
+function isDemoWorkspaceOauthProxyAllowed(): boolean {
+  if (process.env.EGDESK_DEMO_ALLOW_WORKSPACE_OAUTH_PROXY === 'true') return true;
+  return process.env.NODE_ENV === 'development';
+}
+
 function resolveEgdeskMcpApiUrl(): string {
   const internal = process.env.EGDESK_MCP_INTERNAL_URL;
   if (internal && internal.trim()) return internal.replace(/\/$/, '');
@@ -17,8 +27,18 @@ function buildEgdeskHeaders(): HeadersInit {
   return headers;
 }
 
-/** Demo-only proxy for workspace_oauth_clients* (operator BYO config on EGDesk). */
 export async function POST(request: NextRequest) {
+  if (!isDemoWorkspaceOauthProxyAllowed()) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          'Operator workspace-oauth proxy is disabled. Use EGDesk → Google Workspace for BYO upload, or set EGDESK_DEMO_ALLOW_WORKSPACE_OAUTH_PROXY=true only on a trusted local demo.',
+      },
+      { status: 404 },
+    );
+  }
+
   try {
     const body = await request.text();
     const apiUrl = resolveEgdeskMcpApiUrl();

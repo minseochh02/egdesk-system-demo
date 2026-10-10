@@ -17,6 +17,7 @@ import {
   describeOAuthClientJsonKind,
   extractWebProjectId,
 } from '@/lib/oauth-client-json';
+import { VisitorGcpApiLaneCallout } from '@/components/GcpApiLaneCallout';
 import {
   exchangeVisitorAuthCode,
   getVisitorGoogleStatus,
@@ -579,6 +580,13 @@ export default function VisitorAuthDemoPage() {
         </nav>
       </header>
 
+      <VisitorGcpApiLaneCallout
+        loginMode={loginMode}
+        operatorLabel={operatorLabel}
+        connected={Boolean(status?.connected)}
+        connection={selectedConnection}
+      />
+
       <section style={panelStyle}>
         <div style={miniLabelStyle}>Operator BYO — your Web client</div>
         <p style={helperTextStyle}>
@@ -796,6 +804,14 @@ export default function VisitorAuthDemoPage() {
           </dd>
           <dt style={kvTermStyle}>Login mode</dt>
           <dd style={kvDescStyle}>{loginMode === 'operator' ? `operator:${operatorLabel || '—'}` : 'platform'}</dd>
+          <dt style={kvTermStyle}>GCP for Drive/Sheets</dt>
+          <dd style={kvDescStyle}>
+            {status?.connected
+              ? loginMode === 'operator'
+                ? `Web client on ${operatorLabel || selectedConnection?.label || 'connection'} (${selectedConnection?.projectId || 'project'})`
+                : 'platform (EGDesk Supabase app)'
+              : 'Set at sign-in — see callout above'}
+          </dd>
           <dt style={kvTermStyle}>Message</dt>
           <dd style={kvDescStyle}>{status?.message || '—'}</dd>
         </dl>
@@ -824,7 +840,9 @@ export default function VisitorAuthDemoPage() {
           <div>
             <div style={miniLabelStyle}>After sign-in: visitor Google tools</div>
             <p style={helperTextStyle}>
-              These calls proxy through EGDesk with the stored opaque session id. They do not use owner MCP credentials.
+              These calls use the <strong>visitor session’s GCP</strong> (chosen at sign-in above) — not owner Desktop
+              credentials and not <code style={codeStyle}>oauthClientProfileId</code>. Enable Drive/Sheets on that GCP
+              project.
             </p>
           </div>
           <div style={buttonRowStyle}>
