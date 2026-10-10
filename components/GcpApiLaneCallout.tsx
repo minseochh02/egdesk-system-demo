@@ -11,180 +11,228 @@ type ConnectionSummary = {
 
 const mono: React.CSSProperties = {
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 12,
-  background: 'rgba(0,0,0,0.06)',
-  padding: '1px 5px',
+  fontSize: 11,
+  background: '#f3f4f6',
+  padding: '2px 6px',
   borderRadius: 4,
-};
-
-function calloutShell(border: string, bg: string): React.CSSProperties {
-  return {
-    margin: '0 0 20px',
-    padding: '14px 16px',
-    borderRadius: 10,
-    border: `1px solid ${border}`,
-    background: bg,
-    fontSize: 13,
-    lineHeight: 1.55,
-    color: '#1f2937',
-  };
-}
-
-const tableStyle: React.CSSProperties = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  margin: '10px 0',
-  fontSize: 12,
-};
-
-const thStyle: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '6px 8px',
-  borderBottom: '1px solid #d1d5db',
-  fontWeight: 700,
-  color: '#374151',
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '6px 8px',
-  borderBottom: '1px solid #e5e7eb',
-  verticalAlign: 'top',
 };
 
 /** Owner MCP playgrounds (Drive/Sheets/Gmail on EGDesk operator credentials). */
 export function OwnerGcpApiLaneCallout({ visitorAuthHref = '/visitor-auth' }: { visitorAuthHref?: string }) {
   return (
-    <div style={calloutShell('#a7f3d0', '#ecfdf5')}>
-      <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6, color: '#065f46' }}>
-        Which GCP project do API calls use on this page?
+    <div
+      style={{
+        margin: '0 0 16px',
+        padding: '14px 16px',
+        borderRadius: 10,
+        border: '1px solid #a7f3d0',
+        background: '#ecfdf5',
+        fontSize: 13,
+        lineHeight: 1.5,
+        color: '#1f2937',
+      }}
+    >
+      <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, color: '#065f46' }}>
+        Owner lane — which GCP for tools on this page?
       </div>
-      <p style={{ margin: '0 0 8px' }}>
-        <strong>Owner lane</strong> — tools below run as the EGDesk operator (or service account), not as a website
-        visitor.
+      <p style={{ margin: '0 0 10px' }}>
+        Pick connection via <code style={mono}>oauthClientProfileId</code>, server env{' '}
+        <code style={mono}>EGDESK_OWNER_OAUTH_PROFILE</code>, or EGDesk default. Uses the{' '}
+        <strong>Desktop</strong> OAuth client. Visitors use{' '}
+        <a href={visitorAuthHref} style={{ color: '#1d4ed8', fontWeight: 600 }}>/visitor-auth</a> instead.
       </p>
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Pick connection</th>
-            <th style={thStyle}>OAuth client slot</th>
-            <th style={thStyle}>Where to configure</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={tdStyle}>
-              Per tool: <code style={mono}>oauthClientProfileId</code> (id or label)
-              <br />
-              Or server env: <code style={mono}>EGDESK_OWNER_OAUTH_PROFILE</code>
-              <br />
-              Or default connection on EGDesk
-            </td>
-            <td style={tdStyle}>
-              <strong>Desktop</strong> (<code style={mono}>installed</code> JSON) for each GCP connection
-            </td>
-            <td style={tdStyle}>
-              EGDesk → Google Workspace → upload Desktop JSON → <strong>Sign in</strong> on that row; optional hosted-project{' '}
-              <strong>owner pin</strong>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p style={{ margin: 0, color: '#047857' }}>
-        Enable Sheets/Drive APIs on <em>that</em> GCP project. Website visitors use a different path —{' '}
-        <a href={visitorAuthHref} style={{ color: '#1d4ed8', fontWeight: 600 }}>
-          Visitor auth demo
-        </a>{' '}
-        (GCP chosen at login only; <strong>Web</strong> client for <code style={mono}>operator:</code>).
-      </p>
+      <details style={{ fontSize: 12, color: '#047857' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Full owner vs visitor reference</summary>
+        <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+          <li>Owner: Desktop JSON + sign-in on that row in EGDesk → Google Workspace.</li>
+          <li>Visitor: GCP locked at sign-in; Web client for <code style={mono}>operator:&lt;label&gt;</code>.</li>
+        </ul>
+      </details>
     </div>
   );
 }
 
-/** /visitor-auth — Drive/Sheets visitor tools after sign-in. */
+function StatusPill({ label, tone }: { label: string; tone: 'platform' | 'operator' | 'idle' }) {
+  const colors =
+    tone === 'platform'
+      ? { bg: '#dbeafe', border: '#93c5fd', text: '#1e3a8a' }
+      : tone === 'operator'
+        ? { bg: '#d1fae5', border: '#6ee7b7', text: '#065f46' }
+        : { bg: '#f3f4f6', border: '#d1d5db', text: '#4b5563' };
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        fontSize: 12,
+        fontWeight: 800,
+        letterSpacing: 0.3,
+        textTransform: 'uppercase',
+        padding: '6px 12px',
+        borderRadius: 999,
+        border: `1px solid ${colors.border}`,
+        background: colors.bg,
+        color: colors.text,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function MetricCard({ title, value, sub }: { title: string; value: React.ReactNode; sub?: string }) {
+  return (
+    <div
+      style={{
+        flex: '1 1 140px',
+        minWidth: 0,
+        padding: '12px 14px',
+        borderRadius: 10,
+        border: '1px solid #e5e7eb',
+        background: '#fff',
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', marginBottom: 6 }}>
+        {title}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', lineHeight: 1.35, wordBreak: 'break-word' }}>
+        {value}
+      </div>
+      {sub ? (
+        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, lineHeight: 1.4 }}>{sub}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Live status for Drive/Sheets on /visitor-auth (place near sign-in controls). */
 export function VisitorGcpApiLaneCallout({
   loginMode,
   operatorLabel,
   connected,
   connection,
+  compact,
 }: {
   loginMode: 'platform' | 'operator';
   operatorLabel: string;
   connected: boolean;
   connection: ConnectionSummary | null;
+  /** Smaller variant when embedded in session panel */
+  compact?: boolean;
 }) {
-  const operatorRef = operatorLabel.trim() ? `operator:${operatorLabel.trim()}` : 'operator:(pick connection)';
+  const operatorRef = operatorLabel.trim() ? `operator:${operatorLabel.trim()}` : null;
 
-  let activeGcp = 'Sign in first — GCP is chosen during login, not on each Drive/Sheets call.';
-  let clientSlot = '—';
-  let project = '—';
+  const tone: 'platform' | 'operator' | 'idle' = !connected
+    ? 'idle'
+    : loginMode === 'operator'
+      ? 'operator'
+      : 'platform';
 
-  if (connected) {
-    if (loginMode === 'platform') {
-      activeGcp = 'platform — EGDesk Supabase Google app (shared)';
-      clientSlot = 'Platform Web (brokered)';
-      project = 'EGDesk platform project (not your BYO row)';
-    } else {
-      activeGcp = operatorRef;
-      clientSlot = 'Your connection’s Web OAuth client';
-      project = connection?.projectId || '(from Web JSON project_id)';
-    }
-  } else if (loginMode === 'operator' && connection?.clients.web) {
-    activeGcp = `Ready to use ${operatorRef} when you sign in`;
-    clientSlot = 'Web ✓ on selected connection';
-    project = connection.projectId || '—';
-  }
+  const pillLabel = !connected
+    ? 'Not signed in'
+    : loginMode === 'operator'
+      ? operatorRef || 'operator BYO'
+      : 'platform';
+
+  const sourceValue = !connected
+    ? '—'
+    : loginMode === 'platform'
+      ? 'platform'
+      : operatorRef || 'operator';
+
+  const clientValue = !connected
+    ? 'Sign in to bind a client'
+    : loginMode === 'platform'
+      ? 'EGDesk Supabase (shared)'
+      : 'Your Web OAuth client';
+
+  const projectValue = !connected
+    ? '—'
+    : loginMode === 'platform'
+      ? 'EGDesk platform GCP'
+      : connection?.projectId || 'Set Web JSON project_id';
+
+  const clientIdSub =
+    connected && loginMode === 'operator' && connection?.clientIdMasked
+      ? `Client ${connection.clientIdMasked}`
+      : connected && loginMode === 'platform'
+        ? 'Not your BYO connection row'
+        : undefined;
 
   return (
-    <div style={calloutShell('#bfdbfe', '#eff6ff')}>
-      <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6, color: '#1e40af' }}>
-        Which GCP project do Drive / Sheets calls use?
-      </div>
-      <p style={{ margin: '0 0 8px' }}>
-        <strong>Visitor lane</strong> — locked at <strong>sign-in</strong>. You cannot pass{' '}
-        <code style={mono}>oauthClientProfileId</code> on visitor tools.
-      </p>
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Sign-in button</th>
-            <th style={thStyle}>GCP source</th>
-            <th style={thStyle}>Client used for APIs</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={tdStyle}>Platform · Drive/Sheets</td>
-            <td style={tdStyle}><code style={mono}>platform</code></td>
-            <td style={tdStyle}>EGDesk Supabase app</td>
-          </tr>
-          <tr>
-            <td style={tdStyle}>Sign in with YOUR Web client</td>
-            <td style={tdStyle}><code style={mono}>operator:&lt;label&gt;</code></td>
-            <td style={tdStyle}>
-              <strong>Web</strong> JSON on that connection (upload above; Desktop is for owner tools only)
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <dl
+    <div
+      style={{
+        margin: compact ? '0 0 16px' : '0 0 20px',
+        padding: compact ? '14px' : '16px 18px',
+        borderRadius: 12,
+        border: '1px solid #93c5fd',
+        background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%)',
+      }}
+    >
+      <div
         style={{
-          margin: '10px 0 0',
-          display: 'grid',
-          gridTemplateColumns: '140px 1fr',
-          gap: '4px 12px',
-          fontSize: 12,
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          marginBottom: 12,
         }}
       >
-        <dt style={{ fontWeight: 700, color: '#6b7280' }}>This session</dt>
-        <dd style={{ margin: 0 }}>{activeGcp}</dd>
-        <dt style={{ fontWeight: 700, color: '#6b7280' }}>Client slot</dt>
-        <dd style={{ margin: 0 }}>{clientSlot}</dd>
-        <dt style={{ fontWeight: 700, color: '#6b7280' }}>GCP project</dt>
-        <dd style={{ margin: 0 }}>
-          <code style={mono}>{project}</code>
-          {connection?.clientIdMasked ? ` · ${connection.clientIdMasked}` : ''}
-        </dd>
-      </dl>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Drive &amp; Sheets use this GCP
+          </div>
+          {!compact && (
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#4b5563', maxWidth: 520 }}>
+              Chosen at <strong>sign-in</strong> only — visitor tools ignore <code style={mono}>oauthClientProfileId</code>.
+            </p>
+          )}
+        </div>
+        <StatusPill label={pillLabel} tone={tone} />
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        <MetricCard title="GCP source" value={<code style={mono}>{sourceValue}</code>} />
+        <MetricCard title="OAuth client" value={clientValue} sub={clientIdSub} />
+        <MetricCard title="GCP project" value={projectValue} />
+      </div>
+
+      <details style={{ marginTop: 12, fontSize: 12, color: '#374151' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#1d4ed8' }}>
+          Which sign-in button maps to which GCP?
+        </summary>
+        <div style={{ marginTop: 10, overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 320 }}>
+            <thead>
+              <tr style={{ background: '#f1f5f9' }}>
+                <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Button</th>
+                <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Source</th>
+                <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Client</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ padding: 8, borderBottom: '1px solid #e5e7eb' }}>Platform · Drive/Sheets</td>
+                <td style={{ padding: 8, borderBottom: '1px solid #e5e7eb' }}>
+                  <code style={mono}>platform</code>
+                </td>
+                <td style={{ padding: 8, borderBottom: '1px solid #e5e7eb' }}>Supabase app</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 8, borderBottom: '1px solid #e5e7eb' }}>Sign in with YOUR Web client</td>
+                <td style={{ padding: 8, borderBottom: '1px solid #e5e7eb' }}>
+                  <code style={mono}>operator:&lt;label&gt;</code>
+                </td>
+                <td style={{ padding: 8, borderBottom: '1px solid #e5e7eb' }}>Web JSON (BYO panel)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p style={{ margin: '10px 0 0', color: '#6b7280' }}>
+          Desktop JSON in the BYO panel is for <strong>owner</strong> MCP on Drive/Sheets/Gmail playgrounds — not visitor
+          API calls after sign-in here.
+        </p>
+      </details>
     </div>
   );
 }

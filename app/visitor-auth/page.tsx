@@ -560,17 +560,18 @@ export default function VisitorAuthDemoPage() {
         <div style={eyebrowStyle}>Hosted coding auth</div>
         <h1 style={titleStyle}>Visitor Google login test</h1>
         <p style={introStyle}>
-          Exercise <strong>platform</strong> login (EGDesk-brokered Supabase) or <strong>your own Web OAuth client</strong>{' '}
-          (operator BYO → direct Google OAuth to{' '}
-          <code style={codeStyle}>/visitor-auth/callback?code&amp;state</code>). Upload clients in the panel below; secrets stay on EGDesk.
-          The hosted site never receives Supabase keys. On <strong>localhost / 127.0.0.1</strong>, platform login bounces via{' '}
-          <code style={codeStyle}>http://localhost:54321/auth/callback</code>. On{' '}
-          <strong>LAN IP or tunnel</strong>, Google bounces through{' '}
-          <code style={codeStyle}>/visitor-auth/callback/{'{pendingId}'}</code> on the MCP root.
-          This site then receives a one-time code and stores an opaque session id bound to{' '}
-          <strong>this origin</strong> (prod :3000 uses basePath{' '}
-          <code style={codeStyle}>/t/{'{id}'}/p/{'{project}'}</code>).
+          Test <strong>platform</strong> visitor login or <strong>operator BYO</strong> (your Web OAuth client). After
+          sign-in, Drive and Sheets on this page use the GCP shown in the blue status card — not the BYO connection you
+          pick for uploads unless you signed in with that operator label.
         </p>
+        <details style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.55 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#374151' }}>Redirect URLs &amp; session binding</summary>
+          <p style={{ margin: '8px 0 0' }}>
+            Operator BYO callback: <code style={codeStyle}>/visitor-auth/callback?code&amp;state</code> on EGDesk.
+            Platform on localhost uses <code style={codeStyle}>http://localhost:54321/auth/callback</code>. Tunnel/LAN
+            may use MCP-root visitor bounce. Session id is bound to <strong>this origin</strong>.
+          </p>
+        </details>
         <nav style={navStyle} aria-label="Demo navigation">
           {navLinks.map((link) => (
             <a key={link.href} href={link.href} style={navLinkStyle}>
@@ -579,13 +580,6 @@ export default function VisitorAuthDemoPage() {
           ))}
         </nav>
       </header>
-
-      <VisitorGcpApiLaneCallout
-        loginMode={loginMode}
-        operatorLabel={operatorLabel}
-        connected={Boolean(status?.connected)}
-        connection={selectedConnection}
-      />
 
       <section style={panelStyle}>
         <div style={miniLabelStyle}>Operator BYO — your Web client</div>
@@ -732,6 +726,13 @@ export default function VisitorAuthDemoPage() {
       </section>
 
       <section style={panelStyle}>
+        <VisitorGcpApiLaneCallout
+          compact
+          loginMode={loginMode}
+          operatorLabel={operatorLabel}
+          connected={Boolean(status?.connected)}
+          connection={selectedConnection}
+        />
         <div style={panelHeaderStyle}>
           <div>
             <div style={miniLabelStyle}>Current visitor session</div>
@@ -804,14 +805,6 @@ export default function VisitorAuthDemoPage() {
           </dd>
           <dt style={kvTermStyle}>Login mode</dt>
           <dd style={kvDescStyle}>{loginMode === 'operator' ? `operator:${operatorLabel || '—'}` : 'platform'}</dd>
-          <dt style={kvTermStyle}>GCP for Drive/Sheets</dt>
-          <dd style={kvDescStyle}>
-            {status?.connected
-              ? loginMode === 'operator'
-                ? `Web client on ${operatorLabel || selectedConnection?.label || 'connection'} (${selectedConnection?.projectId || 'project'})`
-                : 'platform (EGDesk Supabase app)'
-              : 'Set at sign-in — see callout above'}
-          </dd>
           <dt style={kvTermStyle}>Message</dt>
           <dd style={kvDescStyle}>{status?.message || '—'}</dd>
         </dl>
@@ -1134,7 +1127,7 @@ const helperTextStyle: React.CSSProperties = {
 
 const fieldGridStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: '1fr 1fr auto',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
   gap: 12,
   alignItems: 'end',
 };
