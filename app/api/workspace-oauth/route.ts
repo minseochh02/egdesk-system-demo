@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * DEMO ONLY — forwards browser POSTs to EGDesk `/workspace-oauth/tools/call`.
- * If this route is public, anyone can invoke operator BYO config tools (HANDOFF §6.9, invariant 2).
- * Remove this file or keep it disabled before hosting the demo for a public audience.
+ * Forwards browser POSTs from the visitor-auth BYO panel to EGDesk `/workspace-oauth/tools/call`.
+ * Uses loopback MCP when EGDESK_MCP_INTERNAL_URL is set (hosted coding on the same PC).
+ * Set EGDESK_DISABLE_WORKSPACE_OAUTH_PROXY=true only if you must block this on a public site.
  */
-function isDemoWorkspaceOauthProxyAllowed(): boolean {
-  if (process.env.EGDESK_DEMO_ALLOW_WORKSPACE_OAUTH_PROXY === 'true') return true;
-  return process.env.NODE_ENV === 'development';
+function isWorkspaceOauthProxyDisabled(): boolean {
+  return process.env.EGDESK_DISABLE_WORKSPACE_OAUTH_PROXY === 'true';
 }
 
 function resolveEgdeskMcpApiUrl(): string {
@@ -28,12 +27,12 @@ function buildEgdeskHeaders(): HeadersInit {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isDemoWorkspaceOauthProxyAllowed()) {
+  if (isWorkspaceOauthProxyDisabled()) {
     return NextResponse.json(
       {
         success: false,
         error:
-          'Operator workspace-oauth proxy is disabled. Use EGDesk → Google Workspace for BYO upload, or set EGDESK_DEMO_ALLOW_WORKSPACE_OAUTH_PROXY=true only on a trusted local demo.',
+          'Operator workspace-oauth proxy is disabled (EGDESK_DISABLE_WORKSPACE_OAUTH_PROXY). Use EGDesk → Google Workspace for BYO upload.',
       },
       { status: 404 },
     );
